@@ -134,6 +134,11 @@
         "serve": {
             "game": "node tools/dev-server.mjs",
             "editor": "node _utils/editor/server.mjs"
+        },
+        "cli": {
+            "anyOs": "node tools/arc.mjs <run|editor|check|build|gate|sync|manifest|scaffold>",
+            "windows": "run.bat / editor.bat / check.bat / build.bat (thin wrappers)",
+            "unix": "./run.sh / ./editor.sh / ./check.sh / ./build.sh (thin wrappers)"
         }
     },
     "determinism": {

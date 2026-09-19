@@ -32,11 +32,16 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 ## Запуск и сборка
 
 ```
-run.bat                  # игра: dev-сервер + браузер, порт 8080 (или следующий свободный)
-editor.bat               # редактор: http://localhost:8090/_utils/editor/
-build.bat                # dist/arcengine-<GAME_VERSION>.zip
-check.bat                # типы (tsc по JSDoc) + тесты; агенту — node tools/check.mjs [--types|--tests]
+node tools/arc.mjs run       # игра: dev-сервер + браузер, порт 8080 (или следующий свободный)
+node tools/arc.mjs editor    # редактор: http://localhost:8090/_utils/editor/
+node tools/arc.mjs build     # dist/arcengine-<GAME_VERSION>.zip
+node tools/arc.mjs check     # быстрый профиль; агенту — то же с [--types|--tests|--skills]
+node tools/arc.mjs check --all   # релизный gate: + headless render/visual (puppeteer dev-only)
 ```
+
+Обёртки над тем же CLI: Windows — `run.bat`/`editor.bat`/`check.bat`/`build.bat`,
+macOS/Linux — `./run.sh`/`./editor.sh`/`./check.sh`/`./build.sh`. Серверы сами выбирают
+свободный порт, печатают URL и открывают браузер кроссплатформенно.
 
 Git: что не едет в репозиторий — `.gitignore` (`.claude/`, бэкапы редактора, `build/`, `dist/`);
 `.gitattributes` — файлы едут байт в байт.
