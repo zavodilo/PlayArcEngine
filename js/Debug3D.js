@@ -6,36 +6,36 @@
 //   Debug3D.hold({ eye: [x, y, h], target: [x, y, h] })   look from here, whatever the camera
 //   Debug3D.release()                             controller does; release() hands it back
 //   Debug3D.bench()                               ms per frame, GPU-synchronised
-//   Debug3D.benchToggle(mesh)                     what one mesh costs (A/B/A/B)
+//   Debug3D.benchToggle(mesh)                     what one thing costs (A/B/A/B)
 //   Debug3D.setMode('backfaces' | 'normals' | 'wireframe' | 'off')
 //
 // WHY LINT. Every check below is a defect that once reached the screen unnoticed by the
 // author and was found by eye: a mesh with the opposite winding draws its inside (the
 // silhouette is the same, so it looks plausible — but the light comes from the wrong side and
-// textures are mirrored); an OpenGL normal map in this right-handed scene lights the grooves
-// from the back; one light too many silently drops the LAST light of the scene, which is the
-// sun; a shader one uniform block over the WebGL2 limit fails to link and the mesh vanishes.
+// textures are mirrored); a mirrored node scale flips the faces silently; two shadow-casting
+// suns fight over the one colored shadow of the toon shader.
 //
-// WINDING RULE (measured on Babylon's own primitives and on glTF imports, the same in a
-// left- and a right-handed scene). Take the triangle normal as cross(b - a, c - a):
-//   - it points AGAINST the vertex normals for ClockWiseSideOrientation (0, Babylon's default:
-//     MeshBuilder, Terrain3D, Model3D),
-//   - and ALONG them for CounterClockWiseSideOrientation (1: glTF and most ported generators).
-// The side is material.sideOrientation when set, else mesh.sideOrientation; a mirrored world
-// matrix (negative determinant) flips it. A mesh that disagrees needs the other sideOrientation,
-// not a rewrite of its indices.
+// WINDING RULE (PlayCanvas: front face is COUNTER-CLOCKWISE, like glTF). Take the triangle
+// normal as cross(b - a, c - a): it points ALONG the vertex normals on a correct mesh of
+// this world, and AGAINST them on an inside-out one. A mirrored world matrix (negative
+// determinant — a negative scale on the entity) flips the verdict. A mesh that disagrees
+// needs its indices reversed (or culling off for cards).
 
 /** @satisfies {Record<string, any>} */
 const Debug3D = {
     /** @type {{ heightAt(x: number, y: number): number } | null} */
     terrain: null,          // for hold(): keeps the eye above the ground; defaults to window.app's
-    /** @type {{ view: View3D, observer: any, pose: any } | null} */
+    /** @type {{ view: View3D, fn: any, pose: any } | null} */
     _hold: null,
     _mode: 'off',
-    /** @type {Map<BABYLON.AbstractMesh, BABYLON.Material | null>} */
-    _saved: new Map(),
-    /** @type {BABYLON.ShaderMaterial | null} */
+    /** @type {Map<any, any>} */
+    _saved: new Map(),      // mesh instance -> its material (debug modes swap them)
+    /** @type {Map<any, any>} */
+    _savedMesh: new Map(),  // mesh instance -> its mesh (wireframe swaps meshes)
+    /** @type {pc.ShaderMaterial | null} */
     _modeMaterial: null,
+    /** @type {Map<any, pc.Mesh>} */
+    _wireCache: new Map(),
     /** @type {View3D | null} */
     _modeView: null,
 
@@ -62,30 +62,30 @@ const Debug3D = {
         return { against: total ? against / total : 0, total };
     },
 
-    // against — from windingAgainstNormals; side — effective side orientation (0 CW, 1 CCW);
-    // mirrored — negative world determinant. Returns the share of triangles facing the wrong
-    // way and the verdict: 'ok', 'mixed' (double-sided cards are fine, a half-flipped hull is
-    // not) or 'inverted'.
-    sideVerdict(against, side, mirrored) {
-        const ccw = (side === 1) !== !!mirrored;
-        const wrong = ccw ? against : 1 - against;
+    // against — from windingAgainstNormals; mirrored — negative world determinant (a negative
+    // scale on the entity). PlayCanvas' front face is counter-clockwise: a correct unmirrored
+    // mesh has the winding normal ALONG the vertex normals (against ~ 0). Returns the share of
+    // triangles facing the wrong way and the verdict: 'ok', 'mixed' (double-sided cards are
+    // fine, a half-flipped hull is not) or 'inverted'.
+    sideVerdict(against, mirrored) {
+        const wrong = mirrored ? 1 - against : against;
         return { wrong, verdict: wrong >= 0.9 ? 'inverted' : wrong >= 0.25 ? 'mixed' : 'ok' };
     },
 
     // A normal map's convention cannot be read from its pixels, only from its name: Poly Haven
-    // and glTF maps are OpenGL (Y up), DirectX maps are Y down. A right-handed Babylon scene
-    // wants invertNormalMapY = true for OpenGL maps (that is what the glTF loader sets) and
-    // false for DirectX ones. Returns 'ok', 'wrong' or 'unknown'.
-    normalMapVerdict(url, invertY, rightHanded) {
-        if (!rightHanded) return 'unknown';
+    // and glTF maps are OpenGL (Y up), DirectX maps are Y down. PlayCanvas reads OpenGL maps
+    // as they are (glTF-native); a DirectX map needs its green channel flipped by hand
+    // (bumpiness < 0 inverts the whole map — close enough for a flat-ish surface, and the
+    // lint names the file so the author can re-export). Returns 'ok', 'wrong' or 'unknown'.
+    normalMapVerdict(url, inverted) {
         const name = String(url || '').toLowerCase();
         const gl = /(_nor_gl|_normal_gl|[_-]gl)\.[a-z]+$|_nor_gl_|normalgl|opengl/.test(name) || /\.(glb|gltf)/.test(name);
         const dx = /(_nor_dx|_normal_dx|[_-]dx)\.[a-z]+$|_nor_dx_|normaldx|directx/.test(name);
         if (gl === dx) return 'unknown';
-        return (gl ? !!invertY : !invertY) ? 'ok' : 'wrong';
+        return (gl ? !inverted : inverted) ? 'ok' : 'wrong';
     },
 
-    // Map pose -> Babylon vectors. pose: { eye: [x, y, h], target: [x, y, h] } or
+    // Map pose -> map-space vectors. pose: { eye: [x, y, h], target: [x, y, h] } or
     // { eye, yaw, pitch } (yaw — heading in map radians, pitch — up is positive). The eye is
     // lifted to clearance px above the ground when a terrain is known.
     poseFrom(pose, terrain, clearance) {
@@ -114,179 +114,119 @@ const Debug3D = {
         const o = opts || {};
         /** @type {{ level: string, code: string, target: string, message: string }[]} */
         const out = [];
-        if (!view || !view.scene) return { findings: out, stats: null };
-        const scene = view.scene, engine = scene.getEngine();
+        if (!view || !view.root) return { findings: out, stats: null };
         const add = (level, code, target, message) => out.push({ level, code, target, message });
-        const stats = { meshes: 0, triangles: 0, materials: scene.materials.length, lights: scene.lights.length };
+        const list = view.allMeshInstances().filter(mi => mi !== this._modeMaterial);
+        const stats = { meshes: list.length, triangles: 0, materials: view.materials().length, lights: 1 };
 
         this._lintLights(view, add);
-        const seenMaterials = new Set(), seenPrograms = new Set();
-        /** @type {Map<string, string[]>} */
-        const overLimit = new Map();          // 'lights/limit' -> mesh names
-        /** @type {{ mat: BABYLON.Material, mesh: BABYLON.Mesh }[]} */
-        const notReady = [];
-        for (const m of scene.meshes) {
-            const mesh = /** @type {BABYLON.Mesh} */ (m);
-            if (!mesh.isEnabled() || !mesh.isVisible || mesh.isAnInstance || !mesh.getTotalVertices || !mesh.getTotalVertices()) continue;
-            if (this._saved.has(mesh) && mesh.material === this._modeMaterial) continue;   // a debug mode is on
-            stats.meshes++;
-            const copies = mesh.hasThinInstances ? mesh.thinInstanceCount : 1 + (mesh.instances ? mesh.instances.length : 0);
-            const tris = mesh.getTotalIndices() / 3;
-            stats.triangles += tris * Math.max(1, copies);
+        for (const mi of list) {
+            const mesh = mi.mesh;
+            if (!mesh || !mesh.vertexBuffer || !mesh.vertexBuffer.numVertices) continue;
+            if (this._saved.has(mi)) continue;   // a debug mode is on
+            const tris = (mesh.primitive[0] ? mesh.primitive[0].count : 0) / 3;
+            stats.triangles += tris;
             if (tris > this.LIMITS.meshTriangles) {
-                add('warn', 'heavy-mesh', mesh.name, Math.round(tris / 1000) + 'K triangles in one mesh (x' + copies + ' copies): decimate or add a LOD');
+                add('warn', 'heavy-mesh', mi.node ? mi.node.name : '?', Math.round(tris / 1000) + 'K triangles in one mesh: decimate or add a LOD');
             }
-            this._lintWinding(mesh, add);
-            this._lintMeshLights(mesh, overLimit);
-            for (const mat of this._materialsOf(mesh)) {
-                if (seenMaterials.has(mat)) continue;
-                seenMaterials.add(mat);
-                this._lintMaterial(mat, mesh, scene, add, notReady);
-            }
-            this._lintPrograms(mesh, engine, seenPrograms, add);
-        }
-        for (const [key, names] of overLimit) {
-            const [n, max] = key.split('/').map(Number);
-            add('error', 'light-limit', names.length + ' mesh(es)', n + ' lights reach ' + names.slice(0, 4).join(', ') + (names.length > 4 ? ', …' : '') +
-                ', their materials take ' + max + ': the last ' + (n - max) + ' (the sun first) are dropped. Raise maxSimultaneousLights, narrow lights with includedOnlyMeshes or move them into a ClusteredLightContainer');
-        }
-        // Shaders compile in parallel: a material changed a moment ago is not a finding yet.
-        if (notReady.length) {
-            await new Promise(r => setTimeout(r, 1200));
-            for (const p of notReady) {
-                if (p.mesh.isDisposed() || p.mat.isReady(p.mesh, p.mesh.hasInstances || p.mesh.hasThinInstances)) continue;
-                add('warn', 'material-not-ready', p.mat.name, 'not ready on "' + p.mesh.name + '": a texture is still loading or failed, or the shader did not compile');
-            }
+            this._lintWinding(mi, add);
+            this._lintMaterial(mi.material, mi, add);
         }
         if (o.frame !== false) await this._lintFrame(view, add);
 
+        /** @type {Record<string, number>} */
         const rank = { error: 0, warn: 1, info: 2 };
         out.sort((a, b) => rank[a.level] - rank[b.level]);
         if (!o.silent) {
             const n = (l) => out.filter(f => f.level === l).length;
             console.log('Debug3D.lint: ' + n('error') + ' error(s), ' + n('warn') + ' warning(s), ' + n('info') + ' note(s); ' +
-                stats.meshes + ' meshes, ' + Math.round(stats.triangles / 1000) + 'K triangles, ' + stats.lights + ' lights');
+                stats.meshes + ' meshes, ' + Math.round(stats.triangles / 1000) + 'K triangles, ' + stats.lights + ' light(s)');
             if (out.length) console.table(out);
         }
         return { findings: out, stats };
     },
 
-    _materialsOf(mesh) {
-        const m = mesh.material;
-        if (!m) return [];
-        const subs = /** @type {BABYLON.MultiMaterial} */ (m).subMaterials;
-        return subs ? subs.filter(Boolean) : [m];
-    },
-
-    _lintWinding(mesh, add) {
-        const K = BABYLON.VertexBuffer;
-        const P = mesh.getVerticesData(K.PositionKind), N = mesh.getVerticesData(K.NormalKind), I = mesh.getIndices();
-        if (!P || !N || !I || !I.length) return;
+    _lintWinding(mi, add) {
+        const mesh = mi.mesh;
+        const vb = mesh.vertexBuffer;
+        const fmt = vb.format;
+        const iP = fmt.elements.find(el => el.name === pc.SEMANTIC_POSITION);
+        const iN = fmt.elements.find(el => el.name === pc.SEMANTIC_NORMAL);
+        if (!iP || !iN) return;
+        const locked = new Float32Array(/** @type {ArrayBuffer} */ (vb.lock()));
+        const stride = fmt.size / 4;
+        const P = [], N = [];
+        for (let v = 0; v < vb.numVertices; v++) {
+            const o = v * stride;
+            P.push(locked[o + iP.offset / 4], locked[o + iP.offset / 4 + 1], locked[o + iP.offset / 4 + 2]);
+            N.push(locked[o + iN.offset / 4], locked[o + iN.offset / 4 + 1], locked[o + iN.offset / 4 + 2]);
+        }
+        vb.unlock();
+        const ib = mesh.indexBuffer && mesh.indexBuffer[0];
+        if (!ib) return;
+        const I = Array.from(ib.lock());
+        ib.unlock();
         const w = this.windingAgainstNormals(P, N, I, this.LIMITS.sampleTriangles);
         if (!w.total) return;
-        const mats = this._materialsOf(mesh);
-        const own = mats.length === 1 && mats[0].sideOrientation != null ? mats[0].sideOrientation : mesh.sideOrientation;
-        const v = this.sideVerdict(w.against, own, mesh.getWorldMatrix().determinant() < 0);
+        const mirrored = mi.node ? mi.node.getWorldTransform().scaleSign < 0 : false;
+        const v = this.sideVerdict(w.against, mirrored);
         if (v.verdict === 'ok') return;
-        const culled = mats.length === 0 || mats.some(m => m.backFaceCulling);
-        const want = own === 1 ? 'ClockWiseSideOrientation' : 'CounterClockWiseSideOrientation';
+        const culled = !mi.material || mi.material.cull !== pc.CULLFACE_NONE;
         const share = Math.round(v.wrong * 100) + '% of triangles face inward';
         if (v.verdict === 'inverted') {
-            add(culled ? 'error' : 'warn', 'inverted-winding', mesh.name, share + (culled
+            add(culled ? 'error' : 'warn', 'inverted-winding', (mi.node && mi.node.name) || '?', share + (culled
                 ? ': the mesh draws its INSIDE (far wall, mirrored texture, light from the wrong side)'
-                : ': back-face lighting is wrong') + ' — set mesh.sideOrientation = BABYLON.Material.' + want);
+                : ': back-face lighting is wrong') + ' — reverse the index order of the mesh');
         } else if (culled) {
-            add('warn', 'mixed-winding', mesh.name, share + ' while back-face culling is on: holes from one side — fix the index order of those parts or turn culling off for cards');
+            add('warn', 'mixed-winding', (mi.node && mi.node.name) || '?', share + ' while back-face culling is on: holes from one side — fix the index order of those parts or turn culling off for cards');
         }
     },
 
     _lintLights(view, add) {
-        const lights = view.scene.lights.filter(l => l.isEnabled());
-        if (view.sun && lights.length && lights[lights.length - 1] !== view.sun) {
-            add('warn', 'sun-not-last', view.sun.name, 'the sun must stay the LAST light of the scene: the toon plugin reads the shadow of the last light, and a light limit drops lights from the end. After adding lights: scene.removeLight(sun); scene.addLight(sun)');
+        const suns = view.root.findComponents('light').filter(l => l.castShadows && l.type === 'directional');
+        if (suns.length > 1) {
+            add('warn', 'sun-count', suns.length + ' lights', 'the toon shader colors ONE sun shadow (the last directional light in the loop wins): keep a single shadow-casting directional light');
         }
     },
 
-    _lintMeshLights(mesh, overLimit) {
-        const n = mesh.lightSources ? mesh.lightSources.filter(l => l.isEnabled()).length : 0;
-        for (const mat of this._materialsOf(mesh)) {
-            const max = /** @type {BABYLON.StandardMaterial} */ (mat).maxSimultaneousLights;
-            if (max == null || /** @type {BABYLON.StandardMaterial} */ (mat).disableLighting || n <= max) continue;
-            const key = n + '/' + max;
-            if (!overLimit.has(key)) overLimit.set(key, []);
-            overLimit.get(key).push(mesh.name);
-            return;
-        }
-    },
-
-    _lintMaterial(mat, mesh, scene, add, notReady) {
-        if (!mat.isReady(mesh, mesh.hasInstances || mesh.hasThinInstances)) notReady.push({ mat, mesh });
-        const bump = /** @type {BABYLON.StandardMaterial} */ (mat).bumpTexture;
-        if (!bump) return;
-        const invY = /** @type {BABYLON.StandardMaterial} */ (mat).invertNormalMapY;
-        const url = /** @type {BABYLON.Texture} */ (bump).url || bump.name;
-        const verdict = this.normalMapVerdict(url, invY, scene.useRightHandedSystem);
+    _lintMaterial(mat, mi, add) {
+        if (!mat || !(mat instanceof pc.StandardMaterial) || !mat.normalMap) return;
+        const url = mat.normalMap.name || '';
+        const verdict = this.normalMapVerdict(url, mat.bumpiness < 0);
         if (verdict === 'wrong') {
-            add('error', 'normal-map-y', mat.name, 'normal map "' + url + '" with invertNormalMapY = ' + !!invY + ': grooves are lit from the back. In this right-handed scene OpenGL maps (Poly Haven, glTF) need true, DirectX maps false');
-        } else if (verdict === 'unknown' && scene.useRightHandedSystem && !invY) {
-            add('info', 'normal-map-y', mat.name, 'normal map "' + url + '" with invertNormalMapY = false: right only for a DirectX map. OpenGL maps (Poly Haven, glTF) need true in this right-handed scene');
+            add('error', 'normal-map-y', mat.name, 'normal map "' + url + '" looks like a DirectX map (Y down): PlayCanvas reads OpenGL/green-up maps natively — re-export it or negate bumpiness');
+        } else if (verdict === 'unknown' && mat.bumpiness < 0) {
+            add('info', 'normal-map-y', mat.name, 'normal map "' + url + '" with inverted bumpiness: right only for a DirectX map. OpenGL maps (Poly Haven, glTF) need it as is');
         }
     },
 
-    // Link errors and the two hard WebGL2 limits a growing scene runs into: uniform blocks per
-    // stage (Scene, Material and one per light) and texture units.
-    _lintPrograms(mesh, engine, seen, add) {
-        const gl = /** @type {any} */ (engine)._gl;
-        if (!gl || !mesh.subMeshes) return;
-        for (const sm of mesh.subMeshes) {
-            const effect = sm.effect;
-            if (!effect || seen.has(effect)) continue;
-            seen.add(effect);
-            const err = effect.getCompilationError();
-            if (err) { add('error', 'shader', mesh.name, 'shader failed: ' + String(err).slice(0, 300)); continue; }
-            const ctx = /** @type {any} */ (effect.getPipelineContext());
-            const program = ctx && ctx.program;
-            if (!program || !gl.getProgramParameter || !gl.MAX_FRAGMENT_UNIFORM_BLOCKS) continue;
-            const blocks = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS), maxBlocks = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_BLOCKS);
-            if (blocks >= maxBlocks) {
-                add('warn', 'uniform-blocks', mesh.name, blocks + ' of ' + maxBlocks + ' uniform blocks used (one per light): one more light on this mesh and its shader will not link');
-            }
-            let samplers = 0;
-            const uniforms = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-            for (let i = 0; i < uniforms; i++) {
-                const u = gl.getActiveUniform(program, i);
-                if (u && (u.type === gl.SAMPLER_2D || u.type === gl.SAMPLER_CUBE || u.type === gl.SAMPLER_2D_ARRAY || u.type === gl.SAMPLER_3D ||
-                    u.type === gl.SAMPLER_2D_SHADOW || u.type === gl.SAMPLER_CUBE_SHADOW || u.type === gl.SAMPLER_2D_ARRAY_SHADOW)) samplers += u.size;
-            }
-            const maxTex = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
-            if (samplers >= maxTex - 1) {
-                add('warn', 'texture-units', mesh.name, samplers + ' of ' + maxTex + ' texture units used: every shadow map and texture takes one');
-            }
-        }
-    },
-
-    // A NaN in an HDR pass (normalize of a zero vector, pow of a negative) spreads through bloom
-    // and whites out the WHOLE frame; a shader writing zeros blacks it out.
+    // A NaN in a shader (normalize of a zero vector, pow of a negative) spreads and whites out
+    // the WHOLE frame; a shader writing zeros blacks it out.
     async _lintFrame(view, add) {
-        const engine = view.scene.getEngine();
+        const gl = /** @type {any} */ (view.world.app.graphicsDevice).gl;
+        if (!gl || !gl.readPixels) return;
         try {
             World3D.renderFrame();
-            const w = engine.getRenderWidth(), h = engine.getRenderHeight();
-            const px = /** @type {Uint8Array} */ (await engine.readPixels(0, 0, w, h));
-            let white = 0, black = 0, n = 0;
+            const dev = view.world.app.graphicsDevice;
+            const w = dev.width, h = dev.height;
+            const px = new Uint8Array(w * h * 4);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            let white = 0, black = 0, n = 0, any = 0;
             for (let i = 0; i + 3 < px.length; i += 4 * 61) {
                 n++;
+                if (px[i] || px[i + 1] || px[i + 2]) any++;
                 if (px[i] >= 250 && px[i + 1] >= 250 && px[i + 2] >= 250) white++;
                 else if (px[i] <= 4 && px[i + 1] <= 4 && px[i + 2] <= 4) black++;
             }
-            if (n && white / n > 0.98) add('warn', 'blank-frame', 'frame', 'the frame is fully white: a NaN in an HDR pass spreads through bloom — look for normalize() of a zero vector or pow() of a negative in custom shaders');
-            if (n && black / n > 0.98) add('warn', 'blank-frame', 'frame', 'the frame is fully black: no light reaches the scene, exposure is zero or a shader writes zeros');
+            if (!n || !any) return;   // the backbuffer was already swapped — probe unavailable
+            if (white / n > 0.98) add('warn', 'blank-frame', 'frame', 'the frame is fully white: a NaN in a shader spreads — look for normalize() of a zero vector or pow() of a negative in custom chunks');
+            if (black / n > 0.98) add('warn', 'blank-frame', 'frame', 'the frame is fully black: no light reaches the scene, exposure is zero or a shader writes zeros');
         } catch (e) { /* readPixels is unavailable — skip the probe */ }
     },
 
     // --- Held view -----------------------------------------------------------------------------
 
-    // Holds the Babylon camera at a pose whatever the CameraController does: the pose is applied
+    // Holds the camera at a pose whatever the CameraController does: the pose is applied
     // right before every render, after the controller's own update. Returns the pose in use
     // ({ eye, target, clamped }); clamped — the eye was under the ground and has been lifted.
     hold(pose, view) {
@@ -295,11 +235,13 @@ const Debug3D = {
         const app = /** @type {any} */ (window).app;
         const terrain = this.terrain || (app && app.location && app.location.terrain) || null;
         const p = this.poseFrom(pose, terrain, pose.clearance);
-        const cam = /** @type {BABYLON.TargetCamera} */ (view.camera);
-        const target = new BABYLON.Vector3(p.target.x, p.target.h, p.target.y);
-        const apply = () => { cam.position.set(p.eye.x, p.eye.h, p.eye.y); cam.setTarget(target); };
-        const observer = view.scene.onBeforeRenderObservable.add(apply);
-        this._hold = { view, observer, pose: p };
+        const cam = view.camera;
+        const apply = () => {
+            cam.position.set(p.eye.x, p.eye.h, p.eye.y);
+            cam.setTarget({ x: p.target.x, y: p.target.h, z: p.target.y });
+        };
+        view.onBeforeFrame(apply);
+        this._hold = { view, fn: apply, pose: p };
         apply();
         return p;
     },
@@ -308,7 +250,8 @@ const Debug3D = {
     release() {
         const h = this._hold;
         if (!h) return;
-        if (h.view.scene) h.view.scene.onBeforeRenderObservable.remove(h.observer);
+        const i = h.view._syncFns.indexOf(h.fn);
+        if (i >= 0) h.view._syncFns.splice(i, 1);
         this._hold = null;
     },
 
@@ -324,7 +267,7 @@ const Debug3D = {
     // of a throttled tab says nothing. Same view, same size, nothing else rendering nearby —
     // a second 3D tab halves the GPU.
     bench(opts) {
-        const o = opts || {}, engine = World3D.engine, gl = /** @type {any} */ (engine)._gl;
+        const o = opts || {}, gl = World3D.app && /** @type {any} */ (World3D.app.graphicsDevice).gl;
         const finish = () => { if (gl && gl.finish) gl.finish(); };
         this.frames(o.warmup == null ? 10 : o.warmup);
         finish();
@@ -332,14 +275,15 @@ const Debug3D = {
         this.frames(n);
         finish();
         const ms = (performance.now() - t0) / n;
-        return { ms: Math.round(ms * 100) / 100, fps: Math.round(1000 / ms), width: engine.getRenderWidth(), height: engine.getRenderHeight() };
+        const dev = World3D.app.graphicsDevice;
+        return { ms: Math.round(ms * 100) / 100, fps: Math.round(1000 / ms), width: dev.width, height: dev.height };
     },
 
-    // Cost of one thing: target — a mesh (enabled on/off) or { on(), off() }. Alternates A/B
+    // Cost of one thing: target — an entity (enabled on/off) or { on(), off() }. Alternates A/B
     // rounds times and compares the best runs — one-off spikes (shader compiles) drop out.
     benchToggle(target, opts) {
         const o = opts || {}, rounds = o.rounds || 3;
-        const t = target.setEnabled ? { on: () => target.setEnabled(true), off: () => target.setEnabled(false) } : target;
+        const t = target && target.setEnabled ? { on: () => target.setEnabled(true), off: () => target.setEnabled(false) } : target;
         const on = [], off = [];
         for (let i = 0; i < rounds; i++) {
             t.on(); on.push(this.bench(o).ms);
@@ -352,60 +296,111 @@ const Debug3D = {
 
     // --- Debug render modes ----------------------------------------------------------------------
 
-    // 'backfaces' — faces Babylon treats as back are RED (an inside-out mesh turns red from the
-    // outside), 'normals' — world normals as color, 'wireframe', 'off'. Materials are swapped
-    // for the time of the mode and restored by 'off'; meshes added meanwhile keep their own.
+    // 'backfaces' — faces the engine treats as back are RED (an inside-out mesh turns red from
+    // the outside), 'normals' — world normals as color, 'wireframe' — every edge as a line,
+    // 'off'. Materials (or meshes) are swapped for the time of the mode and restored by 'off';
+    // instances added meanwhile keep their own.
     setMode(mode, view) {
         view = view || this._modeView || World3D.view;
-        const scene = view.scene;
-        for (const [mesh, mat] of this._saved) if (!mesh.isDisposed()) mesh.material = mat;
+        if (!view) return this._mode;
+        for (const [mi, mat] of this._saved) mi.material = mat;
         this._saved.clear();
-        scene.forceWireframe = false;
+        for (const [mi, mesh] of this._savedMesh) mi.mesh = mesh;
+        this._savedMesh.clear();
         this._mode = mode === 'backfaces' || mode === 'normals' || mode === 'wireframe' ? mode : 'off';
         this._modeView = this._mode === 'off' ? null : view;
         if (this._mode === 'off') return this._mode;
-        if (this._mode === 'wireframe') { scene.forceWireframe = true; return this._mode; }
-        const mat = this._facesMaterial(scene);
-        mat.setFloat('mode', this._mode === 'normals' ? 1 : 0);
-        for (const mesh of scene.meshes) {
-            if (!mesh.getTotalVertices || !mesh.getTotalVertices() || mesh.isAnInstance) continue;
-            this._saved.set(mesh, mesh.material);
-            mesh.material = mat;
+        if (this._mode === 'wireframe') {
+            const wire = this._wireMaterial();
+            for (const mi of view.allMeshInstances()) {
+                if (!mi.mesh || !mi.mesh.vertexBuffer || !mi.mesh.vertexBuffer.numVertices) continue;
+                this._savedMesh.set(mi, mi.mesh);
+                this._saved.set(mi, mi.material);
+                mi.mesh = this._wireMesh(view, mi.mesh);
+                mi.material = wire;
+            }
+            return this._mode;
+        }
+        const mat = this._facesMaterial(view);
+        mat.setParameter('mode', this._mode === 'normals' ? 1 : 0);
+        for (const mi of view.allMeshInstances()) {
+            if (!mi.mesh || !mi.mesh.vertexBuffer || !mi.mesh.vertexBuffer.numVertices) continue;
+            this._saved.set(mi, mi.material);
+            mi.material = mat;
         }
         return this._mode;
     },
 
-    _facesMaterial(scene) {
-        if (this._modeMaterial && this._modeMaterial.getScene() === scene) return this._modeMaterial;
-        const S = BABYLON.Effect.ShadersStore;
-        S.debug3dFacesVertexShader = [
-            'precision highp float;',
-            'attribute vec3 position;',
-            'attribute vec3 normal;',
-            '#include<instancesDeclaration>',
-            'uniform mat4 viewProjection;',
-            'varying vec3 vN;',
-            'void main(void) {',
-            '#include<instancesVertex>',
-            '    vN = mat3(finalWorld) * normal;',
-            '    gl_Position = viewProjection * finalWorld * vec4(position, 1.0);',
-            '}'].join('\n');
-        S.debug3dFacesFragmentShader = [
-            'precision highp float;',
-            'varying vec3 vN;',
-            'uniform float mode;',
-            'void main(void) {',
-            '    vec3 n = normalize(vN + vec3(0.0, 1e-5, 0.0));',
-            '    if (mode > 0.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); return; }',
-            '    float l = 0.3 + 0.7 * abs(dot(n, normalize(vec3(0.4, 0.8, 0.45))));',
-            '    gl_FragColor = gl_FrontFacing ? vec4(vec3(l) * 0.75, 1.0) : vec4(l, 0.07, 0.05, 1.0);',
-            '}'].join('\n');
-        const mat = new BABYLON.ShaderMaterial('debug3dFaces', scene, { vertex: 'debug3dFaces', fragment: 'debug3dFaces' }, {
-            attributes: ['position', 'normal'],
-            uniforms: ['world', 'viewProjection', 'mode']
+    _facesMaterial(view) {
+        if (this._modeMaterial) return this._modeMaterial;
+        const mat = new pc.ShaderMaterial({
+            uniqueName: 'debug3dFaces',
+            attributes: { vertex_position: pc.SEMANTIC_POSITION, vertex_normal: pc.SEMANTIC_NORMAL },
+            vertexGLSL: [
+                '#include "transformCoreVS"',
+                '#include "normalCoreVS"',
+                'varying vec3 vN;',
+                'void main(void) {',
+                '    vN = mat3(getModelMatrix()) * getLocalNormal(vertex_normal);',
+                '    gl_Position = getPosition();',
+                '}'].join('\n'),
+            fragmentGLSL: [
+                'precision highp float;',
+                'varying vec3 vN;',
+                'uniform float mode;',
+                'void main(void) {',
+                '    vec3 n = normalize(vN + vec3(0.0, 1e-5, 0.0));',
+                '    if (mode > 0.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); return; }',
+                '    float l = 0.3 + 0.7 * abs(dot(n, normalize(vec3(0.4, 0.8, 0.45))));',
+                '    gl_FragColor = gl_FrontFacing ? vec4(vec3(l) * 0.75, 1.0) : vec4(l, 0.07, 0.05, 1.0);',
+                '}'].join('\n')
         });
-        mat.backFaceCulling = false;
+        mat.cull = pc.CULLFACE_NONE;
         this._modeMaterial = mat;
         return mat;
+    },
+
+    _wireMaterial() {
+        if (this._wireMat) return this._wireMat;
+        const mat = new pc.ShaderMaterial({
+            uniqueName: 'debug3dWire',
+            attributes: { vertex_position: pc.SEMANTIC_POSITION },
+            vertexGLSL: '#include "transformCoreVS"\nvoid main(void) { gl_Position = getPosition(); }',
+            fragmentGLSL: 'precision highp float;\nvoid main(void) { gl_FragColor = vec4(0.1, 0.75, 0.5, 1.0); }'
+        });
+        mat.cull = pc.CULLFACE_NONE;
+        this._wireMat = mat;
+        return mat;
+    },
+
+    // Every triangle edge of a mesh as a line mesh (cached per source mesh).
+    _wireMesh(view, mesh) {
+        if (this._wireCache.has(mesh)) return this._wireCache.get(mesh);
+        const vb = mesh.vertexBuffer;
+        const fmt = vb.format;
+        const iP = fmt.elements.find(el => el.name === pc.SEMANTIC_POSITION);
+        const locked = new Float32Array(/** @type {ArrayBuffer} */ (vb.lock()));
+        const stride = fmt.size / 4;
+        const P = new Float32Array(vb.numVertices * 3);
+        for (let v = 0; v < vb.numVertices; v++) {
+            const o = v * stride + iP.offset / 4;
+            P[v * 3] = locked[o]; P[v * 3 + 1] = locked[o + 1]; P[v * 3 + 2] = locked[o + 2];
+        }
+        vb.unlock();
+        const ib = mesh.indexBuffer && mesh.indexBuffer[0];
+        const I = ib ? ib.lock() : null;
+        if (ib) ib.unlock();
+        const nTri = I ? I.length / 3 : vb.numVertices / 3;
+        const idx = [];
+        for (let t = 0; t < nTri; t++) {
+            const a = I ? I[t * 3] : t * 3, b = I ? I[t * 3 + 1] : t * 3 + 1, c = I ? I[t * 3 + 2] : t * 3 + 2;
+            idx.push(a, b, b, c, c, a);
+        }
+        const out = new pc.Mesh(view.world.app.graphicsDevice);
+        out.setPositions(P);
+        out.setIndices(idx);
+        out.update(pc.PRIMITIVE_LINES);
+        this._wireCache.set(mesh, out);
+        return out;
     }
 };

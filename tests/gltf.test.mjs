@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'node:test';
 import { OUT, buildGlb } from '../tools/make-character.mjs';
-import { loadScripts } from './browser-scripts.mjs';
+import { loadScripts, stub } from './browser-scripts.mjs';
 
 function parseGlb(buf) {
   assert.equal(buf.toString('latin1', 0, 4), 'glTF');
@@ -42,59 +42,62 @@ test('character.glb: скелет, клипы idle и run, буферы сход
   }
 });
 
-// A fake AnimationGroup: remembers what Clips3D does to it.
-function fakeGroup(name) {
-  return {
-    name, isPlaying: false, weight: null, from: 0, to: 1, speedRatio: 1,
-    onAnimationGroupEndObservable: { addOnce() {} },
-    start(loop, speed) { this.isPlaying = true; this.loop = loop; this.speedRatio = speed; },
-    stop() { this.isPlaying = false; },
-    reset() {},
-    setWeightForAllAnimatables(w) { this.weight = w; },
-    dispose() {},
-  };
+// A fake AnimComponent stack: remembers what Clips3D asks of the engine.
+function fakeLayer() {
+    return {
+        name: 'Base', played: [], transitions: [], resets: 0, activeStateCurrentTime: 0,
+        play(name) { this.played.push(name); },
+        transition(to, time) { this.transitions.push([to, time]); },
+        reset() { this.resets++; }
+    };
 }
 
 function makeClips() {
-  const page = loadScripts(['js/Constants.js', 'js/Gltf3D.js']);
-  const Clips3D = page.get('Clips3D');
-  const scene = { onBeforeAnimationsObservable: { add: () => ({}), remove() {} }, getEngine: () => ({ getDeltaTime: () => 16 }) };
-  const idle = fakeGroup('hero/idle'), run = fakeGroup('hero/run');
-  return { clips: new Clips3D(scene, [idle, run], ['idle', 'run']), idle, run, blend: page.get('MODEL_CLIP_BLEND_SEC') };
+    const page = loadScripts(['js/Constants.js', 'js/Gltf3D.js'], { pc: stub(), World3D: stub() });
+    const Clips3D = page.get('Clips3D');
+    const layer = fakeLayer();
+    const entity = {
+        anim: {
+            playing: false,
+            assignAnimation() {},
+            findAnimationLayer: () => layer
+        },
+        addComponent(name) { /* the anim component is already faked above */ }
+    };
+    const tracks = [
+        { resource: { name: 'hero/idle', duration: 1 } },
+        { resource: { name: 'hero/run', duration: 0.6 } }
+    ];
+    const clips = new Clips3D(entity, ['idle', 'run']);
+    clips.setTracks(tracks);
+    return { clips, layer, entity, blend: page.get('MODEL_CLIP_BLEND_SEC') };
 }
 
-test('клипы: имена из файла, первый клип сразу с весом 1, неизвестного клипа нет', () => {
-  const { clips, idle } = makeClips();
-  assert.deepEqual([...clips.names()], ['idle', 'run']);
-  assert.equal(clips.play('jump'), false);
-  assert.equal(clips.play('idle'), true);
-  assert.equal(idle.isPlaying, true);
-  assert.equal(idle.weight, 1);
+test('клипы: имена из файла, неизвестного клипа нет, текущий пуст до play', () => {
+    const { clips, entity } = makeClips();
+    assert.deepEqual([...clips.names()], ['idle', 'run']);
+    assert.equal(clips.has('idle'), true);
+    assert.equal(clips.play('jump'), false);
+    assert.equal(clips.play('idle'), true);
+    assert.equal(clips.current, 'idle');
+    assert.equal(entity.anim.playing, true);
 });
 
-test('клипы: переход idle -> run за MODEL_CLIP_BLEND_SEC, сумма весов 1, старый клип останавливается', () => {
-  const { clips, idle, run, blend } = makeClips();
-  clips.play('idle');
-  clips.play('run');
-  assert.equal(run.weight, 0);
-  clips._tick(blend / 4);
-  assert.ok(Math.abs(run.weight - 0.25) < 1e-9 && Math.abs(idle.weight + run.weight - 1) < 1e-9);
-  clips.play('run');                       // the same clip again — no restart, the fade goes on
-  clips._tick(blend / 4);
-  assert.ok(Math.abs(run.weight - 0.5) < 1e-9);
-  clips.play('idle');                      // back in the middle of the fade — from the current weights
-  clips._tick(blend / 4);
-  assert.ok(Math.abs(idle.weight - 0.75) < 1e-9 && Math.abs(idle.weight + run.weight - 1) < 1e-9);
-  clips._tick(blend);
-  assert.equal(idle.weight, 1);
-  assert.equal(run.isPlaying, false);
-  assert.equal(clips.current, 'idle');
+test('клипы: первый play стартует слой, смена клипа — переход за MODEL_CLIP_BLEND_SEC', () => {
+    const { clips, layer, blend } = makeClips();
+    clips.play('idle');
+    assert.deepEqual(layer.played, ['idle']);
+    clips.play('run');
+    assert.deepEqual(layer.transitions, [['run', blend]]);
+    clips.play('run');                      // the same clip again — no new transition
+    assert.equal(layer.transitions.length, 1);
 });
 
 test('клипы: stop возвращает позу покоя', () => {
-  const { clips, idle } = makeClips();
-  clips.play('idle');
-  clips.stop();
-  assert.equal(idle.isPlaying, false);
-  assert.equal(clips.current, '');
+    const { clips, layer, entity } = makeClips();
+    clips.play('idle');
+    clips.stop();
+    assert.equal(entity.anim.playing, false);
+    assert.equal(layer.resets, 1);
+    assert.equal(clips.current, '');
 });

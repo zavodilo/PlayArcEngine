@@ -24,7 +24,7 @@ export function loadScripts(files, globals = {}) {
   return { ctx, get: (name) => vm.runInContext(name, ctx) };
 }
 
-// Babylon/World3D stub: any field, call and new return the stub itself. For logic that
+// pc/World3D stub: any field, call and new return the stub itself. For logic that
 // does not need 3D, but whose constructor creates meshes and materials along the way.
 export function stub() {
   const target = function () {};

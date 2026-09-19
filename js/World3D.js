@@ -1,122 +1,149 @@
-// World3D.js — the kit's 3D engine: Babylon on a canvas, the scene view (View3D: camera,
-// light, shadows, screen <-> world projections), render constants (cfg), toon shader
-// (ArcToonPlugin), ink edges and silhouette outline, world object registration.
+// World3D.js — the kit's 3D engine: PlayCanvas 2 on a canvas, the scene view (View3D:
+// camera, light, shadows, screen <-> world projections), render constants (cfg), toon
+// shader (ArcToon: shader chunks on StandardMaterial), ink edges and silhouette outline,
+// world object registration.
 //
-// Coordinates: map (x right, y down, px) -> Babylon (X = x, Z = y,
-// Y = height). The scene is RIGHT-HANDED (useRightHandedSystem): viewed from above with
-// north (−y) up, east (+x) is on the right; in a left-handed scene the same world came
-// out mirrored. Heading (rad, atan2(vy, vx)) -> rotation.y = -heading.
-// "Right on screen" at camera azimuth az is (−sin az, cos az).
+// Coordinates: the kit's map space (x right, y down, px; height up) is RIGHT-HANDED by
+// tradition (heading rad -> rotation.y = -heading, like the old Babylon backend).
+// PlayCanvas is a LEFT-HANDED engine, so everything crosses the border MIRRORED on X:
+//     pc world = ( -x, h, y )     — see World3D.mirror() / unmirror()
+// Mirroring the world AND the camera together with the chirality flip of the projection
+// cancels out on screen: the picture is the same as in the right-handed scene (east on the
+// right with north up). Geometry is BUILT mirrored (positions/normals: x negated; winding
+// as authored), entity transforms are mirrored at placement (Location3D.placeObject),
+// light directions and rotations are mirrored where they are applied.
 //
 // The frame is drawn by the loop owner: World3D.renderFrame() from its own
 // requestAnimationFrame (the game's main.js, the editor's lab.js), after camera.update().
+// renderFrame() steps the app (components, animation) and draws one frame.
 //
 // One light for the whole world: the azimuth WORLD3D_SUN_AZIMUTH_DEG sets WHERE the
 // shadow falls, the sun elevation is WORLD3D_SUN_ELEVATION_DEG. Shadows are real
-// (ShadowGenerator, the sun's ortho frustum follows the camera).
+// (directional light with a shadow map; PlayCanvas fits the ortho frustum to the shadow
+// casters in view, like the old fitShadowFrustum did by hand).
 //
-// SHADOWS — ONE COLOR FOR EVERYTHING. Babylon only provides the sun visibility (generator
-// darkness = 0); the shadow is colored by the ArcToonPlugin plugin (define ARCSHADOW):
-// surface light in shadow = unshadowed light × mix(1, WORLD3D_SHADOW_COLOR,
-// WORLD3D_SHADOW_STRENGTH). The unshadowed light is reconstructed from the sum (the sun
-// is the LAST light of the scene: hemi is created first, the shader's `shadow` after
-// the light loop is the sun's; the sun direction and color are plugin uniforms from
-// scene.metadata.arcSun).
+// SHADOWS — ONE COLOR FOR EVERYTHING. The sun only provides visibility; the shadow is
+// colored in the fragment shader (ArcToon chunks): the light loop records the sun's
+// hidden fraction (arcShadowA) and the hidden light (arcSunAdd); the unshadowed light is
+// reconstructed and multiplied by mix(white, WORLD3D_SHADOW_COLOR, strength).
 //
-// RENDER CONSTANTS are read in one place — World3D.cfg() (in the game they are lexical
-// const, hence the typeof checks). applyRenderConstants(view) applies them to the
-// live scene without a rebuild: light, sky, fog and shadows (View3D.applyLighting),
-// materials by group (metadata.toonGroup: 'ground' | 'prop' | 'actor'),
-// toon (uniforms — immediately, on/off — a shader rebuild), ink edges and outline.
+// RENDER CONSTANTS are read in one place — World3D.cfg(). applyRenderConstants(view)
+// applies them to the live scene without a rebuild: light, sky, fog and shadows
+// (View3D.applyLighting), materials by group (mat.arc.group: 'ground' | 'prop' | 'actor'),
+// toon (uniforms — immediately), ink edges and outline.
 //
-// WORLD OBJECTS are registered by addObject(view, mesh, kind): material group,
-// shadow, ink edges and outline. kind: 'actor' — the main objects of the frame
-// (characters, cars), 'prop' — environment (cubes, walls, trees).
-//
-// The toon shader is ArcToonPlugin (BABYLON.MaterialPluginBase, registered on
-// ALL StandardMaterial at World3D.init): after the light of all sources is summed,
-// the diffuseBase brightness is quantized into WORLD3D_TOON_BANDS bands between
-// WORLD3D_TOON_LOW and 1, the specular highlight — by a threshold, along the silhouette
-// edge — a rim light. The injection point is the line `aggShadow=aggShadow/numLights;`
-// of the default.fragment shader (a regex in getCustomCode; if the line is missing, the
-// code is not injected and the shader does not break, there are just no bands). Unlit
-// materials (disableLighting) are left untouched by the plugin.
+// WORLD OBJECTS are registered by addObject(view, entity, kind): material group, shadow,
+// ink edges and outline. kind: 'actor' — the main objects of the frame (characters, cars),
+// 'prop' — environment (cubes, walls, trees). Objects are pc.Entity trees; a built model's
+// root entity plays the role the root mesh played before (LocationObject.mesh).
 
 /** @satisfies {Record<string, any>} */
 const World3D = {
-    /** @type {BABYLON.Engine | null} */
-    engine: null,
+    /** @type {pc.Application | null} */
+    app: null,
+    /** @type {pc.Application | null} */
+    engine: null,          // the app under the old name (game code and the editor)
     /** @type {HTMLCanvasElement | null} */
     canvas: null,
     /** @type {View3D | null} */
-    view: null,             // the active View3D (drawn by renderFrame)
-    /** @type {BABYLON.Color4 | null} */
-    _bg: null,
+    view: null,            // the active View3D (drawn by renderFrame)
     /** @type {typeof ArcToon} */
-    toon: null,             // toon plugin state — ArcToon below, after ArcToonPlugin
+    toon: null,            // toon shader state — ArcToon below
+    _fps: 60,
+    _lastT: 0,
 
-    // Render layers (Babylon renderingGroupId), the depth buffer is SHARED (see View3D):
-    //   WORLD   — the ground and everything standing on it;
+    // Render layers (pc.Layer order), the depth buffer is SHARED (see View3D):
+    //   WORLD   — the ground and everything standing on it (the engine's World layer);
     //   OVERLAY — marks on top of the world (selection, paths): their materials get
-    //             depthFunction = ALWAYS and disableDepthWrite — the terrain does not cut
-    //             them, and the world depth stays intact;
-    //   ACTOR   — objects that go last: OVERLAY paint does not land on top of
-    //             them, but they hide behind walls honestly.
+    //             depthTest off and depthWrite off — the terrain does not cut them,
+    //             and the world depth stays intact;
+    //   ACTOR   — objects that go last: OVERLAY paint does not land on top of them,
+    //             but they hide behind walls honestly.
     LAYER: { WORLD: 0, OVERLAY: 1, ACTOR: 2 },
+    LAYER_ID: { OVERLAY: 11, ACTOR: 12 },   // pc.Layer ids (0..10 are the engine's own)
 
     available() {
-        return typeof BABYLON !== 'undefined' && !!this.engine;
+        return typeof pc !== 'undefined' && !!this.app;
     },
 
-    // Brings up the engine on the canvas (one per page). false — no Babylon or WebGL.
+    // map (x, h, y-map) -> pc world; and back.
+    mirror(x, h, y) { return [-x, h, y]; },
+    unmirror(px, py, pz) { return [-px, py, pz]; },
+
+    // Brings up the engine on the canvas (one per page). false — no PlayCanvas or WebGL.
     init(canvas) {
-        if (typeof BABYLON === 'undefined') {
-            console.warn('World3D: libs/babylon.js не загружен — 3D-мир недоступен.');
+        if (typeof pc === 'undefined') {
+            console.warn('World3D: libs/playcanvas.min.js не загружен — 3D-мир недоступен.');
             return false;
         }
-        if (this.engine) return true;
+        if (this.app) return true;
         this.canvas = canvas;
         try {
-            this.engine = new BABYLON.Engine(canvas, true, {
-                preserveDrawingBuffer: false,
-                stencil: true,     // needed by the silhouette outline HighlightLayer (needStencil)
-                antialias: true,
-                adaptToDeviceRatio: false,
-                powerPreference: 'high-performance',
-                doNotHandleContextLost: true
-            }, false);
+            this.app = this.engine = new pc.Application(canvas, {
+                graphicsDeviceOptions: {
+                    antialias: true,
+                    alpha: false,
+                    depth: true,
+                    stencil: true,          // the silhouette outline and the editor gizmo may need stencil
+                    powerPreference: 'high-performance',
+                    preserveDrawingBuffer: false
+                }
+            });
         } catch (e) {
             console.error('World3D: WebGL недоступен', e);
-            this.engine = null;
+            this.app = this.engine = null;
             return false;
         }
-        // Sharpness on HiDPI: render in physical pixels (on mobile —
-        // no more than 1.5x, otherwise fill rate eats the frame).
+        const app = this.app;
+        // Sharpness on HiDPI: render in physical pixels (on mobile — no more than
+        // 1.5x, otherwise fill rate eats the frame).
         const dpr = window.devicePixelRatio || 1;
-        const cap = IS_MOBILE ? 1.5 : 2;
-        this.engine.setHardwareScalingLevel(1 / Math.min(dpr, cap));
-        this._bg = new BABYLON.Color4(0.133, 0.133, 0.133, 1);
-        // The toon plugin attaches to materials at their CREATION — register it
-        // before the first scene.
+        app.graphicsDevice.maxPixelRatio = Math.min(dpr, IS_MOBILE ? 1.5 : 2);
+        // The canvas size comes from CSS; only the drawing buffer follows it.
+        app.setCanvasFillMode(pc.FILLMODE_NONE);
+        app.setCanvasResolution(pc.RESOLUTION_AUTO);
+        // The look: no tone mapping, unit exposure — colors reach the screen as authored
+        // (the toon shader quantizes them itself), sRGB output like the old pipeline.
+        app.scene.toneMapping = pc.TONEMAP_LINEAR;
+        app.scene.exposure = 1;
+        // Render layers beyond the engine's World: overlay marks and late actors.
+        const comp = app.scene.layers;
+        comp.push(new pc.Layer({
+            name: 'overlay', id: this.LAYER_ID.OVERLAY,
+            clearColorBuffer: false, clearDepthBuffer: false,
+            opaqueSortMode: pc.SORTMODE_NONE, transparentSortMode: pc.SORTMODE_NONE
+        }));
+        comp.push(new pc.Layer({
+            name: 'actor', id: this.LAYER_ID.ACTOR,
+            clearColorBuffer: false, clearDepthBuffer: false
+        }));
         this.toon.register();
         this.resize();
         return true;
     },
 
     resize() {
-        if (this.engine) this.engine.resize();
+        if (this.app) this.app.resizeCanvas();
     },
 
+    fps() { return this._fps; },
+
     renderFrame() {
-        const e = this.engine;
-        if (!e) return;
+        const app = this.app;
+        if (!app) return;
+        const now = performance.now();
+        const dt = Math.min(0.1, Math.max(0.0001, (now - (this._lastT || now)) / 1000));
+        this._lastT = now;
+        this._fps += (1 / dt - this._fps) * 0.05;
         const v = this.view;
-        if (v && v.active && v.scene && v.scene.activeCamera) {
+        if (v && v.active) {
             v.beforeRender();
-            this.outlineFog(v);
-            v.scene.render();
+            app.update(dt);
+            app.render();
         } else {
-            e.clear(this._bg, true, true, true);
+            // No view: clear to the neutral gray, like the old engine did.
+            app.update(dt);
+            app.render();
         }
     },
 
@@ -175,138 +202,226 @@ const World3D = {
         };
     },
 
-    // Live application of render constants to the view's scene (editor): light, shadows,
+    // Live application of render constants to the view (editor): light, shadows,
     // sky, materials by group, toon, ink edges and outlines. Rebuilds nothing.
     applyRenderConstants(view) {
-        if (!view || !view.scene) return;
+        if (!view || !view.root) return;
         const c = this.cfg();
         view.applyLighting(c);
         this.toon.apply(c);
-        for (const m of view.scene.materials) this.applyMaterialConstants(m, c);
-        this.applyInk(view.scene, c);
+        for (const m of view.materials()) this.applyMaterialConstants(m, c);
+        this.toon.push(view, c);
+        this.applyInk(view, c);
         this.applyOutlines(view, c);
-        view.scene.resetCachedMaterial();
     },
 
-    // Material specular highlight by group (metadata.toonGroup): ground, environment, main objects.
-    // The ground ring beyond the edge (metadata.outer) — also the WORLD3D_OUTER_TINT brightness.
+    // Material specular highlight by group (mat.arc.group): ground, environment, main
+    // objects. The old specularPower maps onto PlayCanvas gloss of the Blinn lobe
+    // (specPow = exp2(gloss * 11)). The ground ring beyond the edge (mat.arc.outer) —
+    // also the WORLD3D_OUTER_TINT brightness.
+    /** @param {ArcMaterial} m @param {any} [c] */
     applyMaterialConstants(m, c) {
-        const g = m && m.metadata && m.metadata.toonGroup;
-        if (!g || !(m instanceof BABYLON.StandardMaterial)) return;
+        m = /** @type {ArcMaterial} */ (m);
+        const g = m && m.arc && m.arc.group;
+        if (!g || !(m instanceof pc.StandardMaterial)) return;
         c = c || this.cfg();
-        let spec = 0, power = m.specularPower;
+        let spec = 0, power = m.arc.specPower || 32;
         if (g === 'ground') { spec = c.groundSpecular; power = c.groundSpecPower; }
         else if (g === 'prop') { spec = c.propSpecular; power = c.propSpecPower; }
         else if (g === 'actor') { spec = c.actorSpecular; power = c.actorSpecPower; }
-        m.specularColor = new BABYLON.Color3(spec, spec, spec);
-        m.specularPower = Math.max(1, power);
-        if (m.metadata.outer) {
+        m.arc.specPower = power;
+        m.specular = new pc.Color(spec, spec, spec);
+        m.gloss = Math.max(0, Math.min(1, Math.log2(Math.max(1, power)) / 11));
+        if (m.arc.outer) {
             const t = Math.max(0, c.outerTint);
-            m.diffuseColor = new BABYLON.Color3(t, t, t);
+            m.diffuse = new pc.Color(t, t, t);
         }
     },
 
     // --- World objects -----------------------------------------------------------
 
     // Object registration: materials (of child meshes too) — into the kind group (specular
-    // highlight from constants, toon), the root — into the shadow map, edges — into the ink
-    // edges, the silhouette — into the outline. The root and the children get THEIR OWN
-    // metadata: clone() copies it by reference, and the ink edges/outline of clones would
-    // write into a shared object.
-    // kind: 'actor' | 'prop'. opts: { castShadow, receiveShadows, ink, outline } — all true by default.
-    addObject(view, mesh, kind, opts) {
-        if (!view || !mesh) return mesh;
+    // highlight from constants, toon), the render instances — shadow receive/cast, creased
+    // edges — into the ink edges, the silhouette — into the outline. kind: 'actor' | 'prop'.
+    // opts: { castShadow, receiveShadows, ink, outline } — all true by default.
+    addObject(view, entity, kind, opts) {
+        if (!view || !entity) return entity;
         const o = opts || {};
         const k = kind === 'prop' ? 'prop' : 'actor';
         const c = this.cfg();
-        const parts = [mesh].concat(mesh.getChildMeshes ? mesh.getChildMeshes(false) : []);
-        for (const m of parts) {
-            m.metadata = Object.assign({}, m.metadata);
-            m.receiveShadows = o.receiveShadows !== false;
-            const mat = m.material;
-            const mats = mat ? (mat.subMaterials || [mat]) : [];
-            for (const sm of mats) {
-                if (!sm) continue;
-                sm.metadata = Object.assign({ toonGroup: k }, sm.metadata);
-                this.applyMaterialConstants(sm, c);
+        for (const mi of view.meshInstancesOf(entity)) {
+            const mat = /** @type {ArcMaterial} */ (mi.material);
+            if (mat && mat instanceof pc.StandardMaterial) {
+                mat.arc = Object.assign({ group: k }, mat.arc);
+                if (mat.useLighting !== false) this.toon.attach(view, mat);
+                this.applyMaterialConstants(mat, c);
             }
-            const solid = m.getTotalVertices && m.getTotalVertices() > 0;
-            // A skinned mesh gets no ink edges: EdgesRenderer builds its lines once, from the
-            // rest pose, and they would stay behind while the bones move the mesh.
-            if (solid && o.ink !== false && !m.skeleton) this.inkMesh(m, k, c);
-            // All parts — into ONE outline layer: the line follows the overall silhouette, not a part.
-            if (solid && o.outline !== false) this.outlineAdd(view, m, k, c);
+            mi.receiveShadow = o.receiveShadows !== false;
+            const solid = mi.mesh && mi.mesh.vertexBuffer && mi.mesh.vertexBuffer.numVertices > 0;
+            // A skinned mesh gets no ink edges: the line mesh is built once from the rest
+            // pose and would stay behind while the bones move the mesh.
+            if (solid && o.ink !== false && !mi.skinInstance) this.inkMesh(view, mi, k, c);
+            // All parts — into ONE outline pass per kind: the line follows the overall
+            // silhouette, not a part.
+            if (solid && o.outline !== false) this.outlineAdd(view, mi, k, c);
         }
-        if (o.castShadow !== false) view.addShadowCaster(mesh, true);
-        return mesh;
+        if (o.castShadow !== false) view.addShadowCaster(entity, true);
+        return entity;
     },
 
-    // Remove an object: outline, shadows, the mesh with its children. Materials stay with the owner.
-    removeObject(view, mesh) {
-        if (!mesh) return;
-        const parts = [mesh].concat(mesh.getChildMeshes ? mesh.getChildMeshes(false) : []);
-        for (const m of parts) this.outlineRemove(view, m);
-        if (view) view.removeShadowCaster(mesh);
-        mesh.dispose(false, false);
+    // Remove an object: outline, ink, shadows, the entity with its children.
+    removeObject(view, entity) {
+        if (!entity) return;
+        if (view) {
+            for (const mi of view.meshInstancesOf(entity)) {
+                this.outlineRemove(view, mi);
+                this.inkRemove(view, mi);
+                mi.castShadow = false;
+            }
+        }
+        entity.destroy();
     },
 
-    // --- Ink edges (EdgesRenderer) ---------------------------------------------
+    // --- Ink edges (creased edges as fat lines) ----------------------------------
 
     // Mesh edges creased sharper than WORLD3D_TOON_INK_ANGLE are drawn as lines in the ink
-    // color. group: 'actor' (level 1) | 'prop' (level 2). Cost: ~5 ms per
-    // mesh of 1300 triangles, once.
-    inkMesh(mesh, group, c) {
-        if (!mesh || !mesh.enableEdgesRendering) return;
+    // color. group: 'actor' (level 1) | 'prop' (level 2). The line is a screen-facing quad
+    // ribbon of WORLD-space width inkWidth/50 px (as wide as it looks at zoom 1, thinner
+    // when the camera moves away — the old Babylon semantics). WebGL line primitives are
+    // 1px and unfilterable, hence the ribbon.
+    inkMesh(view, mi, group, c) {
+        if (!mi || !mi.mesh) return;
         c = c || this.cfg();
-        const md = mesh.metadata || (mesh.metadata = {});
-        md.ink = group;
+        const rec = view._inks || (view._inks = new Map());
         const want = c.ink >= (group === 'prop' ? 2 : 1) && c.inkWidth > 0;
-        if (!want) {
-            if (mesh.edgesRenderer) mesh.disableEdgesRendering();
-            md.inkEps = null;
-            return;
+        if (!want) { this.inkRemove(view, mi); return; }
+        let e = rec.get(mi);
+        if (!e) {
+            const mesh = this._inkEdgeMesh(view, mi.mesh, c);
+            if (!mesh) return;
+            const line = new pc.MeshInstance(mesh, view.inkMaterial(c), mi.node);
+            line.castShadow = false;
+            line.receiveShadow = false;
+            view.putInLayer(line, view.layerOf(mi));
+            e = { mi: line, group: group, mesh: mesh };
+            rec.set(mi, e);
         }
-        const eps = Math.cos(Math.max(1, Math.min(89, c.inkAngle)) * Math.PI / 180);
-        if (!mesh.edgesRenderer || md.inkEps !== eps) {
-            // checkVerticesInsteadOfIndices: in flat-shaded lowpoly the
-            // triangles are disconnected, adjacency is found by vertex coordinates.
-            mesh.enableEdgesRendering(eps, true);
-            md.inkEps = eps;
-        }
-        mesh.edgesWidth = c.inkWidth;
+        // Ribbon width in world px: the old Babylon edges read ~1 screen px per 25 units
+        // of WORLD3D_TOON_INK_WIDTH at zoom 1 (measured against the reference).
+        e.mi.material.setParameter('arcInkWidth', Math.max(0.5, c.inkWidth) / 25);
         const col = this.hexColor3(c.inkColor);
-        mesh.edgesColor = new BABYLON.Color4(col.r, col.g, col.b, 1);
-        if (group === 'prop') mesh.edgesShareWithInstances = true;
+        e.mi.material.setParameter('arcInkColor', [col.r, col.g, col.b]);
     },
 
-    applyInk(scene, c) {
+    inkRemove(view, mi) {
+        const rec = view && view._inks;
+        const e = rec && rec.get(mi);
+        if (!e) return;
+        view.dropFromLayers(e.mi);
+        e.mesh.destroy();
+        rec.delete(mi);
+    },
+
+    applyInk(view, c) {
+        if (!view) return;
         c = c || this.cfg();
-        for (const m of scene.meshes) {
-            if (m.metadata && m.metadata.ink && !m.isAnInstance) this.inkMesh(m, m.metadata.ink, c);
+        const rec = view._inks;
+        // Drop the lines of meshes that no longer want ink; re-width and recolor the rest.
+        for (const [mi, e] of [...(rec || [])]) {
+            if (!mi.node || mi.node._destroyed) { rec.delete(mi); continue; }
+            this.inkMesh(view, mi, e.group, c);
+        }
+        // Pick up meshes registered while ink was off for their group.
+        for (const mi of view.allMeshInstances()) {
+            const g = mi.material && mi.material.arc && mi.material.arc.group;
+            if (!g || mi.skinInstance) continue;
+            if (rec && rec.has(mi)) continue;
+            if (c.ink >= (g === 'prop' ? 2 : 1) && c.inkWidth > 0) this.inkMesh(view, mi, g, c);
         }
     },
 
-    // --- Silhouette outline: mask-based post effect ------------------------------
+    // Creased edges of a mesh -> a line-ribbon pc.Mesh (positions + edge data attributes).
+    // Adjacency is by WELDED positions (flat-shaded lowpoly keeps its corners separate);
+    // an edge is inked when the face normals crease sharper than the angle constant.
+    _inkEdgeMesh(view, mesh, c) {
+        if (mesh._arcInkCache && mesh._arcInkCache.angle === c.inkAngle) return mesh._arcInkCache.mesh;
+        const vb = mesh.vertexBuffer;
+        if (!vb) return null;
+        const fmt = vb.format;
+        const iP = fmt.elements.find(el => el.name === pc.SEMANTIC_POSITION);
+        const idxBuf = mesh.indexBuffer && mesh.indexBuffer[0];
+        const idx = idxBuf ? idxBuf.lock() : null;
+        const vCount = vb.numVertices;
+        const strideF = fmt.size / 4;
+        const PF = new Float32Array(/** @type {ArrayBuffer} */ (vb.lock()));
+        const oP = (iP ? iP.offset : 0) / 4;
+        const nTri = idx ? idx.length / 3 : vCount / 3;
+        // Face normals (the winding sign cancels in the crease test).
+        const tri = (t) => idx ? [idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]] : [t * 3, t * 3 + 1, t * 3 + 2];
+        const fn = [];
+        const px = (v) => PF[v * strideF + oP], py = (v) => PF[v * strideF + oP + 1], pz = (v) => PF[v * strideF + oP + 2];
+        for (let t = 0; t < nTri; t++) {
+            const [a, b, d] = tri(t);
+            const ux = px(b) - px(a), uy = py(b) - py(a), uz = pz(b) - pz(a);
+            const vx = px(d) - px(a), vy = py(d) - py(a), vz = pz(d) - pz(a);
+            let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+            const l = Math.hypot(nx, ny, nz) || 1;
+            fn.push([nx / l, ny / l, nz / l]);
+        }
+        // Edge -> the two faces sharing it (welded by quantized position).
+        const key = (v) => px(v).toFixed(2) + '|' + py(v).toFixed(2) + '|' + pz(v).toFixed(2);
+        const eps = Math.cos(Math.max(1, Math.min(89, c.inkAngle)) * Math.PI / 180);
+        const edges = new Map();
+        for (let t = 0; t < nTri; t++) {
+            const [a, b, d] = tri(t);
+            const vs = [a, b, d];
+            for (let i2 = 0; i2 < 3; i2++) {
+                const v0 = vs[i2], v1 = vs[(i2 + 1) % 3];
+                const k0 = key(v0), k1 = key(v1);
+                const k = k0 < k1 ? k0 + '#' + k1 : k1 + '#' + k0;
+                let e = edges.get(k);
+                if (!e) edges.set(k, (e = { v: [v0, v1], faces: [] }));
+                if (e.faces.length < 2) e.faces.push(fn[t]);
+            }
+        }
+        const posArr = [], otherArr = [], signArr = [], idxArr = [];
+        let n = 0;
+        for (const e of edges.values()) {
+            if (e.faces.length !== 2) continue;
+            const dot = e.faces[0][0] * e.faces[1][0] + e.faces[0][1] * e.faces[1][1] + e.faces[0][2] * e.faces[1][2];
+            if (dot >= eps) continue;   // not creased enough
+            const p = [px(e.v[0]), py(e.v[0]), pz(e.v[0])];
+            const q = [px(e.v[1]), py(e.v[1]), pz(e.v[1])];
+            posArr.push(...p, ...p, ...q, ...q);
+            otherArr.push(...q, ...q, ...p, ...p);
+            signArr.push(-1, 1, -1, 1);
+            idxArr.push(n, n + 1, n + 2, n + 2, n + 1, n + 3);
+            n += 4;
+        }
+        vb.unlock();
+        if (idxBuf) idxBuf.unlock();
+        if (!n) { mesh._arcInkCache = { angle: c.inkAngle, mesh: null }; return null; }
+        const out = new pc.Mesh(view.world.app.graphicsDevice);
+        out.setPositions(posArr);
+        out.setVertexStream(pc.SEMANTIC_ATTR6, otherArr, 3);   // the other end of the edge
+        out.setVertexStream(pc.SEMANTIC_ATTR7, signArr, 1);    // quad corner sign
+        out.setIndices(idxArr);
+        out.update(pc.PRIMITIVE_TRIANGLES);
+        mesh._arcInkCache = { angle: c.inkAngle, mesh: out };
+        return out;
+    },
+
+    // --- Silhouette outline: inverted hull ----------------------------------------
     //
-    // "Stroke like in Photoshop": objects are drawn into a separate MASK (RTT), it is
-    // dilated and laid over the frame in the ink color. The line follows the OUTER
-    // boundary of the silhouette, ONE per whole object. The width is in screen pixels
-    // and does not depend on the distance to the camera. No shader of its own: the stock
-    // BABYLON.HighlightLayer with isStroke (#define STROKE in glowMapMerge gives a
-    // hard edge instead of a glow). Levels — WORLD3D_TOON_OUTLINE. The outline is
-    // part of the toon look: at WORLD3D_TOON = 0 (the editor's "toon shader" checkbox)
-    // there is none. Ink edges (inkMesh) do not depend on WORLD3D_TOON.
+    // "Stroke like in Photoshop", PlayCanvas edition: a second render instance of the
+    // same mesh with a hull shader — vertices pushed along their normals, back faces
+    // only, ink color. The line follows the OUTER boundary of the silhouette, ONE per
+    // whole object, width in screen pixels (constant with distance). Depth-tested, so
+    // an outlined object hides behind walls honestly (the old post-effect layer drew
+    // over everything — the hull is the calmer behaviour, and free of the mask passes).
+    // Scene fog tints the line in the shader itself (the old per-frame CPU tone is gone).
     //
-    // Each object kind ('actor' / 'prop') has its own width, while a layer has one for
-    // everything — so different kinds need different layers.
-    //
-    // Scene fog does not touch the line (it is laid over the finished frame) — the fog
-    // tone is given to each mesh by outlineFog once per frame.
-    //
-    // PITFALL: the layer needs a stencil buffer (needStencil() = true) — the engine
-    // is brought up with stencil: true, otherwise the outline creeps onto the object itself.
-    // PITFALL: the outline is drawn ON TOP of the frame and knows nothing about depth — an
-    // object in front of an outlined one will not occlude it. Viewed from above it is unnoticeable.
+    // Each object kind ('actor' / 'prop') has its own width — a material per kind.
 
     outlineKind(kind) { return kind === 'prop' ? 'prop' : 'actor'; },
 
@@ -316,283 +431,195 @@ const World3D = {
         return this.outlineKind(kind) === 'prop' ? c.outlinePropWidth : c.outlineActorWidth;
     },
 
-    // Layer resolution: the mask is a fraction of the frame, the blur is a fraction of the
-    // mask. Do not drop the mask below the frame: a line thinner than a texel cannot be
-    // drawn, and a 0.5 × 0.5 texel is 4 frame px. On mobile only the blur is cheaper.
-    outlineRatios() {
-        return { main: 1, blur: IS_MOBILE ? 0.5 : 1 };
+    // The hull material of one kind, created per view on demand.
+    outlineMaterial(view, kind, c) {
+        c = c || this.cfg();
+        const store = view._outlineMats || (view._outlineMats = {});
+        const k = this.outlineKind(kind);
+        if (store[k]) return store[k];
+        const mat = new pc.ShaderMaterial({
+            uniqueName: 'arcOutline-' + k,
+            attributes: { vertex_position: pc.SEMANTIC_POSITION, vertex_normal: pc.SEMANTIC_NORMAL },
+            vertexGLSL: ArcOutline.VS,
+            fragmentGLSL: ArcOutline.FS
+        });
+        // The hull keeps the faces the object itself culls: with the kit's winding in the
+        // mirrored world that is CULLFACE_BACK (measured, see skill render-conventions).
+        mat.cull = pc.CULLFACE_BACK;
+        mat.depthWrite = true;
+        mat.blendType = pc.BLEND_NONE;
+        store[k] = mat;
+        return mat;
     },
 
-    // Width in frame px -> the layer's blur kernel.
-    // PITFALL: HighlightLayer's blurHorizontalSize is in TEXELS of the blur
-    // texture (frame × mainTextureRatio × blurTextureSizeRatio), not in frame
-    // px. Without the conversion, on mobile (0.5 × 0.5) the same constant gave
-    // a line four times thicker than on PC.
-    outlineKernel(width) {
-        const r = this.outlineRatios();
-        return width * r.main * r.blur;
-    },
-
-    // Outline layer: a SEPARATE one for each "object kind × mesh rendering group" pair
-    // (`view._outlines['actor@2']` etc.). The kind sets the width, the group — the moment
-    // of compositing.
-    //
-    // PITFALL (outline on only some of the objects). A layer gives a line ONLY to the
-    // meshes that are drawn in its rendering group. With the default
-    // renderingGroupId = −1 the compositing landed between groups: objects of another
-    // group were flooded by the mask entirely, and some objects had no line at all.
-    // So a layer is created for EVERY group that has an outlined mesh.
-    outlineLayer(view, kind, renderGroup, c) {
-        if (!view || !view.scene || typeof BABYLON.HighlightLayer !== 'function') return null;
+    // Put a mesh instance into the outline. kind: 'actor' (level 1) | 'prop' (level 2).
+    outlineAdd(view, mi, kind, c) {
+        if (!view || !mi) return;
         c = c || this.cfg();
         const k = this.outlineKind(kind);
-        const g = renderGroup || 0;
-        const key = k + '@' + g;
-        const store = view._outlines || (view._outlines = {});
-        let rec = store[key];
-        const width = this.outlineWidthOf(k, c);
-        if (!(c.toon > 0) || !(c.outline >= (k === 'prop' ? 2 : 1)) || !(width > 0)) return rec ? rec.hl : null;
-        const kernel = this.outlineKernel(width);
-        if (!rec) {
-            const r = this.outlineRatios();
-            const hl = new BABYLON.HighlightLayer('arcOutline-' + key, view.scene, {
-                isStroke: true,
-                camera: view.camera,
-                mainTextureRatio: r.main,
-                blurTextureSizeRatio: r.blur,
-                blurHorizontalSize: kernel,
-                blurVerticalSize: kernel,
-                renderingGroupId: g
-            });
-            hl.innerGlow = false;     // outward only — this is an outline, not a glow
-            hl.outerGlow = true;
-            // PITFALL (dark "ghost" of the outline in fog). In STROKE mode the merge
-            // shader (glowMapMerge) already multiplies the color by alpha, and the layer's
-            // default blending, ALPHA_COMBINE (SRC_ALPHA), multiplies a second time:
-            // color·α² + frame·(1−α). On a black line this is invisible, but a fog-colored
-            // line (outlineFog) got an edge a quarter darker than the background: the object
-            // dissolved in the distance, the outline remained. ALPHA_PREMULTIPLIED
-            // (ONE, ONE_MINUS_SRC_ALPHA) is needed — but ONLY for the duration of the compose.
-            // The mode lives in the thin layer's private options, and the layer reads those
-            // same options when it recreates textures on canvas resize: with PREMULTIPLIED it
-            // built a different blur chain (2 passes instead of 3), the blur
-            // texture stayed empty, and the outline vanished completely (the ArcTrack
-            // editor after a view resize). A constructor option will not do for
-            // the same reason. The field is private: check it when upgrading Babylon.
-            const thin = /** @type {any} */ (hl)._thinEffectLayer;
-            if (thin && thin._options) {
-                const C = BABYLON.Constants;
-                hl.onBeforeComposeObservable.add(() => { thin._options.alphaBlendingMode = C.ALPHA_PREMULTIPLIED; });
-                hl.onAfterComposeObservable.add(() => { thin._options.alphaBlendingMode = C.ALPHA_COMBINE; });
-            }
-            // PITFALL (dark fringe on a light line). The layer clears the mask with
-            // neutralColor — black (0,0,0,0) by default. The blur takes the color of
-            // the brightest sample, and a sample at the mask edge is bilinearly mixed with
-            // that black: with a fractional kernel (width 1.5 or 0.5 px) and on
-            // mobile (blur at half the frame) a fog-colored line got
-            // a dark fringe. The mask background is the darkest tone of the layer's meshes
-            // with alpha 0 (outlineFog): mixing with it does not darken the color, and it
-            // cannot be lighter — the blur would repaint a nearer object's line with it. The
-            // object is its own: by default all layers share the static HighlightLayer.NeutralColor.
-            hl.neutralColor = new BABYLON.Color4(0, 0, 0, 0);
-            // meshes: mesh -> its line color (Color3, the fog tone is adjusted by outlineFog).
-            rec = store[key] = { hl: hl, group: g, kind: k, meshes: new Map(), ink: null };
-        }
-        rec.hl.blurHorizontalSize = kernel;
-        rec.hl.blurVerticalSize = kernel;
-        rec.ink = this.hexColor3(c.inkColor);
-        return rec.hl;
-    },
-
-    // Put a mesh into the outline. kind: 'actor' (level 1) | 'prop' (level 2).
-    // The mesh remembers its kind — applyOutlines rebuilds the set when constants
-    // are edited. Instances (thin and regular) are outlined together with the source mesh.
-    outlineAdd(view, mesh, kind, c) {
-        if (!view || !mesh) return;
-        c = c || this.cfg();
-        const k = this.outlineKind(kind);
-        const md = mesh.metadata || (mesh.metadata = {});
-        md.outline = k;
-        this.outlineRemove(view, mesh);   // it may have been in another group's layer
-        // Toon is off — no outline; applyOutlines brings the removed mesh back when toon is turned on.
+        mi._arcOutline = k;
+        this.outlineRemove(view, mi);
+        // Toon is off — no outline; applyOutlines brings it back when toon is turned on.
         const want = c.toon > 0 && c.outline >= (k === 'prop' ? 2 : 1) && this.outlineWidthOf(k, c) > 0;
         if (!want) return;
-        const g = mesh.renderingGroupId || 0;
-        const hl = this.outlineLayer(view, k, g, c);
-        if (!hl) return;
-        const tone = this.hexColor3(c.inkColor);   // each mesh gets its own object: outlineFog edits it in place
-        hl.addMesh(mesh, tone);
-        const rec = view._outlines[k + '@' + g];
-        if (rec) rec.meshes.set(mesh, tone);
+        const mat = this.outlineMaterial(view, k, c);
+        const hull = new pc.MeshInstance(mi.mesh, mat, mi.node);
+        hull.castShadow = false;
+        hull.receiveShadow = false;
+        if (mi.skinInstance) hull.skinInstance = mi.skinInstance;   // the hull dances with the bones
+        view.putInLayer(hull, view.layerOf(mi));
+        (view._outlines || (view._outlines = new Map())).set(mi, hull);
+        this._outlineParams(view, mat, k, c);
     },
 
-    // Remove a mesh from all outline layers; an emptied layer is disposed (an empty mask
-    // still costs a render pass).
-    outlineRemove(view, mesh) {
-        const store = view && view._outlines;
-        if (!store || !mesh) return;
-        for (const key of Object.keys(store)) {
-            const rec = store[key];
-            if (!rec || !rec.hl || !rec.meshes.has(mesh)) continue;
-            try { rec.hl.removeMesh(mesh); } catch (e) { /* ok */ }
-            rec.meshes.delete(mesh);
-            if (!rec.meshes.size) {
-                try { rec.hl.dispose(); } catch (e) { /* ok */ }
-                delete store[key];
-            }
-        }
-    },
-
-    // Constants edit: the width goes onto live layers, levels and color — a rebuild of the set.
-    applyOutlines(view, c) {
-        if (!view || !view.scene) return;
+    _outlineParams(view, mat, k, c) {
         c = c || this.cfg();
-        for (const m of view.scene.meshes) {
-            if (m.metadata && m.metadata.outline && !m.isAnInstance) this.outlineAdd(view, m, m.metadata.outline, c);
-        }
+        mat.setParameter('arcOutlineWidth', this.outlineWidthOf(k, c));
+        const dev = view.world.app.graphicsDevice;
+        mat.setParameter('arcOutlineNdc', [2 / Math.max(1, dev.width), 2 / Math.max(1, dev.height)]);
+        const col = this.hexColor3(c.inkColor);
+        mat.setParameter('arcInkColor', [col.r, col.g, col.b]);
+        const fog = view.fogState(c);
+        mat.setParameter('arcFogColor', [fog.r, fog.g, fog.b]);
+        mat.setParameter('arcFogDensity', fog.density);
     },
 
-    // Outline fog tone — once per frame, before scene.render() (renderFrame).
-    // The line is laid over the finished frame, and without the tone a distant object
-    // dissolved in the fog while the black outline around it remained. The mesh's line color
-    // is mixed with the fog by the SAME formula Babylon applies to the surface
-    // (fogFragment: mix(fogColor, color, f)), at the distance from the camera to the mesh
-    // center. No constants of its own: the fog is the scene's (WORLD3D_FOG_DENSITY,
-    // WORLD3D_SKY_COLOR, the view's opts overrides). One tone per mesh. For a mesh with
-    // instances (thin or regular — e.g. a forest as one mesh) the bounds
-    // center is the middle of the whole scatter, and a tone based on it would be wrong for
-    // copies near the camera: their tone is by the distance to the camera's look-at point.
-    outlineFog(view) {
+    outlineRemove(view, mi) {
         const store = view && view._outlines;
-        if (!store || !view.scene || !view.camera) return;
-        const scene = view.scene, fog = scene.fogColor, cam = view.camera;
-        cam.getViewMatrix();   // globalPosition is recomputed with the view matrix, and the frame render is still ahead
-        const eye = cam.globalPosition;
-        const focus = BABYLON.Vector3.Distance(eye, cam.getTarget());
-        for (const key in store) {
-            const rec = store[key], ink = rec.ink;
-            if (!ink) continue;
-            let darkest = Infinity;
-            for (const [m, tone] of rec.meshes) {
-                let d = focus;
-                if (!m.hasThinInstances && !(m.instances && m.instances.length)) {
-                    m.computeWorldMatrix();   // the object may have been moved since the last frame
-                    d = BABYLON.Vector3.Distance(eye, m.getBoundingInfo().boundingSphere.centerWorld);
-                }
-                const f = m.applyFog === false ? 1 : this.fogFactor(scene, d);
-                rec.hl.addMesh(m, tone.set(fog.r + (ink.r - fog.r) * f, fog.g + (ink.g - fog.g) * f, fog.b + (ink.b - fog.b) * f));
-                // Luminance — same as the sample selection in the blur (glowBlurPostProcess).
-                const lum = 0.2126 * tone.r + 0.7152 * tone.g + 0.0722 * tone.b;
-                if (lum < darkest) { darkest = lum; rec.hl.neutralColor.set(tone.r, tone.g, tone.b, 0); }
-            }
-        }
+        const hull = store && store.get(mi);
+        if (!hull) return;
+        view.dropFromLayers(hull);
+        store.delete(mi);
+        mi._arcOutline = null;
     },
 
-    // The fraction of the surface color that the scene fog leaves at distance d
-    // (1 — no fog, 0 — fog only). Formulas — CalcFogFactor from
-    // Babylon's fogFragmentDeclaration.
-    fogFactor(scene, d) {
-        if (!scene.fogEnabled) return 1;
-        const S = BABYLON.Scene, rho = scene.fogDensity;
-        let f = 1;
-        if (scene.fogMode === S.FOGMODE_EXP) f = Math.exp(-d * rho);
-        else if (scene.fogMode === S.FOGMODE_EXP2) f = Math.exp(-(d * rho) * (d * rho));
-        else if (scene.fogMode === S.FOGMODE_LINEAR) f = (scene.fogEnd - d) / (scene.fogEnd - scene.fogStart);
-        return Math.max(0, Math.min(1, f));
+    // Constants edit: widths and color onto live materials, levels — a rebuild of the set.
+    applyOutlines(view, c) {
+        if (!view || !view.root) return;
+        c = c || this.cfg();
+        for (const [mi, hull] of [...(view._outlines || [])]) {
+            if (!mi.node || mi.node._destroyed) { view._outlines.delete(mi); continue; }
+            const k = mi._arcOutline;
+            this.outlineRemove(view, mi);
+            if (k) this.outlineAdd(view, mi, k, c);
+        }
+        for (const mat of Object.values(view._outlineMats || {})) {
+            for (const k of ['actor', 'prop']) if (view._outlineMats[k] === mat) this._outlineParams(view, mat, k, c);
+        }
     },
 
     // --- Utilities -------------------------------------------------------------
 
-    // The "where the sun shines" vector (unit, downward): azimuth on the map (0 — right,
-    // 90 — down), elevation above the horizon.
+    // The "where the sun shines" vector (unit, downward) in PC WORLD space: azimuth on the
+    // map (0 — right, 90 — down), elevation above the horizon; then mirrored on X.
     sunDirection(c) {
         c = c || this.cfg();
         const az = c.sunAz * Math.PI / 180;
         const el = c.sunEl * Math.PI / 180;
         const ce = Math.cos(el);
-        return new BABYLON.Vector3(Math.cos(az) * ce, -Math.sin(el), Math.sin(az) * ce);
+        return new pc.Vec3(-Math.cos(az) * ce, -Math.sin(el), Math.sin(az) * ce);
     },
 
     hexColor3(v) {
-        if (typeof v === 'string') return BABYLON.Color3.FromHexString(v);
-        const n = (v >>> 0) & 0xffffff;
-        return new BABYLON.Color3(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+        const col = new pc.Color(1, 1, 1);
+        if (typeof v === 'string') col.fromString(v);
+        else {
+            const n = (v >>> 0) & 0xffffff;
+            col.set(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1);
+        }
+        return col;
+    },
+
+    // --- Rotations across the mirror ------------------------------------------------
+    //
+    // Map-space euler angles in the right-handed tradition (Babylon's mesh.rotation:
+    // yaw about Y, then pitch about X, then roll about Z) -> a quaternion of the mirrored
+    // PlayCanvas world. The engine's own euler order differs from the old one on compound
+    // tilts, hence the matrix route, not setFromEulerAngles.
+    rotQuat(rx, ry, rz) {
+        const c1 = Math.cos(rx), s1 = Math.sin(rx);
+        const c2 = Math.cos(ry), s2 = Math.sin(ry);
+        const c3 = Math.cos(rz), s3 = Math.sin(rz);
+        // Row-vector M = Ry·Rx·Rz (the old rotation chain), then R = Mᵀ (column-vector),
+        // then the mirror R' = S·R·S with S = diag(-1, 1, 1): signs on the x row/column.
+        const M = [
+            c2 * c3 - s1 * s2 * s3, c2 * s3 + s1 * s2 * c3, -c1 * s2,
+            -c1 * s3, c1 * c3, s1,
+            s2 * c3 + c2 * s1 * s3, s2 * s3 - c2 * s1 * c3, c1 * c2
+        ];
+        const r = (i, j) => {           // R' column-vector element (i, j), mirrored
+            const v = M[j * 3 + i];      // transpose
+            const sx = (i === 0 ? -1 : 1), sy = (j === 0 ? -1 : 1);
+            return v * sx * sy;
+        };
+        // Standard column-vector matrix -> quaternion.
+        const m00 = r(0, 0), m11 = r(1, 1), m22 = r(2, 2);
+        const tr = m00 + m11 + m22;
+        const q = new pc.Quat();
+        if (tr > 0) {
+            const s = Math.sqrt(tr + 1) * 2;
+            q.set((r(2, 1) - r(1, 2)) / s, (r(0, 2) - r(2, 0)) / s, (r(1, 0) - r(0, 1)) / s, s / 4);
+        } else if (m00 > m11 && m00 > m22) {
+            const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+            q.set(s / 4, (r(0, 1) + r(1, 0)) / s, (r(0, 2) + r(2, 0)) / s, (r(2, 1) - r(1, 2)) / s);
+        } else if (m11 > m22) {
+            const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+            q.set((r(0, 1) + r(1, 0)) / s, s / 4, (r(1, 2) + r(2, 1)) / s, (r(0, 2) - r(2, 0)) / s);
+        } else {
+            const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+            q.set((r(0, 2) + r(2, 0)) / s, (r(1, 2) + r(2, 1)) / s, s / 4, (r(1, 0) - r(0, 1)) / s);
+        }
+        return q;
+    },
+
+    // The way back (editor gizmo -> def.rot degrees): quaternion of the mirrored world ->
+    // map-space euler angles of the right-handed tradition.
+    eulerFromQuat(q) {
+        // Column-vector rotation matrix of the quaternion.
+        const x = q.x, y = q.y, z = q.z, w = q.w;
+        const R = [
+            1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w),
+            2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w),
+            2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)
+        ];
+        // Un-mirror (S·R'·S), then back to the row-vector M = Rᵀ.
+        const rp = (i, j) => R[i * 3 + j] * (i === 0 ? -1 : 1) * (j === 0 ? -1 : 1);
+        const M = (i, j) => rp(j, i);
+        const D = 180 / Math.PI;
+        const px = Math.asin(Math.max(-1, Math.min(1, M(1, 2))));
+        const py = Math.atan2(-M(0, 2), M(2, 2));
+        const pz = Math.atan2(-M(1, 0), M(1, 1));
+        return [px * D, py * D, pz * D];
     }
 };
 
-// --- Toon material plugin -------------------------------------------------------
-
-// StandardMaterial plugin. Lives on every material (material.arcToon). Two
-// independent defines:
-//   ARCSHADOW — colored shadow (see the file header): on all lit materials
-//               of a scene that has scene.metadata.arcSun (set by
-//               View3D.applyLighting);
-//   ARCTOON   — light bands (World3D.toon.s.on).
-// Values go out as uniforms on every bind (no shader rebuild),
-// defines — on markAllDefinesAsDirty. Materials of the 'ground' group get
-// bands = 0 when WORLD3D_TOON_GROUND is off, and rim light 0 — branching in the
-// shader, not in a define, so that the editor's toggles do not recompile
-// shaders. metadata.toon = false turns the bands off on a material.
-class ArcToonPlugin extends BABYLON.MaterialPluginBase {
-    constructor(material) {
-        super(material, 'ArcToon', 500, { ARCTOON: false, ARCSHADOW: false }, true, true);
-    }
-
-    getClassName() { return 'ArcToonPlugin'; }
-
-    prepareDefines(defines, scene, mesh) {
-        const s = World3D.toon.s;
-        const m = /** @type {BABYLON.StandardMaterial} */ (this._material);
-        const lit = !m.disableLighting;
-        defines.ARCTOON = !!(s.on && lit && !(m.metadata && m.metadata.toon === false));
-        defines.ARCSHADOW = !!(lit && scene.metadata && scene.metadata.arcSun);
-    }
-
-    getUniforms() {
-        return {
-            ubo: [
-                { name: 'arcToonA', size: 4, type: 'vec4' },
-                { name: 'arcToonB', size: 4, type: 'vec4' },
-                { name: 'arcShadowColor', size: 4, type: 'vec4' },
-                { name: 'arcSunDir', size: 4, type: 'vec4' },
-                { name: 'arcSunColor', size: 4, type: 'vec4' }
-            ],
-            fragment: '#ifdef ARCTOON\nuniform vec4 arcToonA;\nuniform vec4 arcToonB;\n#endif\n' +
-                '#ifdef ARCSHADOW\nuniform vec4 arcShadowColor;\nuniform vec4 arcSunDir;\nuniform vec4 arcSunColor;\n#endif'
-        };
-    }
-
-    bindForSubMesh(ubo, scene, engine, subMesh) {
-        const s = World3D.toon.s;
-        const m = this._material;
-        const md = scene.metadata;
-        if (md && md.arcSun) {
-            const sun = md.arcSun, sh = md.arcShadow || {};
-            const col = sh.color || World3D.hexColor3(0x012d3c);
-            ubo.updateFloat4('arcShadowColor', col.r, col.g, col.b, sh.strength != null ? sh.strength : 0.36);
-            ubo.updateFloat4('arcSunDir', sun.dir.x, sun.dir.y, sun.dir.z, 0);
-            ubo.updateFloat4('arcSunColor', sun.color.r, sun.color.g, sun.color.b, 0);
-        }
-        const ground = !!(m.metadata && m.metadata.toonGroup === 'ground');
-        const bands = (ground && !s.ground) ? 0 : s.bands;
-        ubo.updateFloat4('arcToonA', bands, s.soft, s.low, s.spec);
-        ubo.updateFloat4('arcToonB', s.specSize, ground ? 0 : s.rim, s.rimWidth, 0);
-    }
-
-    getCustomCode(shaderType) {
-        return shaderType === 'fragment' ? ArcToonPlugin.CODE : null;
-    }
-}
-
-// arcToonA = (bands, softness, lowest band, specular highlight strength),
-// arcToonB = (specular highlight threshold, rim light strength, rim light width, —),
-// arcShadowColor = (shadow color, strength), arcSunDir = toward the sun, arcSunColor =
-// sun diffuse × intensity (like Babylon's vLightDiffuse).
-ArcToonPlugin.CODE = {
-    CUSTOM_FRAGMENT_DEFINITIONS: `
-#ifdef ARCTOON
+// --- Toon material chunks -------------------------------------------------------
+//
+// Chunks on every lit StandardMaterial of the world (ArcToon.attach). Everything is
+// uniform-driven: no shader rebuild when the editor flips toon on/off or moves a slider
+// (the old Babylon plugin recompiled on toon on/off).
+//
+//   arcToonA      = (bands, softness, lowest band, specular strength)
+//   arcToonB      = (specular threshold, rim strength, rim width, on/off gate)
+//   arcShadowColor= (shadow color, strength)
+//   arcHemi       = (sky light color, intensity)      — hemispheric ambient
+//   arcHemiGround = ground fill color
+// The sun's hidden fraction (arcShadowA) and the hidden light (arcSunAdd) are recorded
+// in the light loop; endPS reconstructs the unshadowed light, colors the shadow and
+// quantizes the sum into bands — the same place the old plugin injected (after all
+// lights are summed, before albedo), then the rim light rides on before the fog.
+const ArcToonChunks = {
+    DECL: `
+uniform vec4 arcToonA;
+uniform vec4 arcToonB;
+uniform vec4 arcShadowColor;
+uniform vec4 arcHemi;
+uniform vec3 arcHemiGround;
+float arcShadowA;
+vec3 arcSunAdd;
 float arcToonLevel(float v) {
     float bands = arcToonA.x;
+    if (bands < 1.5 || arcToonB.w < 0.5) return v;
     float lo = arcToonA.z;
     float t = clamp((v - lo) / max(1e-4, 1.0 - lo), 0.0, 1.0);
     float x = t * (bands - 1.0);
@@ -602,54 +629,59 @@ float arcToonLevel(float v) {
     float q = k + smoothstep(0.5 - s, 0.5 + s, d) - smoothstep(0.5 - s, 0.5 + s, -d);
     return lo + clamp(q / (bands - 1.0), 0.0, 1.0) * (1.0 - lo);
 }
+`,
+    // Hemispheric ambient, like Babylon's hemispheric light: sky color from above,
+    // ground fill from below, interpolated by the world normal.
+    AMBIENT: `
+void addAmbient(vec3 worldNormal) {
+    float up = worldNormal.y * 0.5 + 0.5;
+    dDiffuseLight += mix(arcHemiGround, arcHemi.rgb, up) * arcHemi.a;
+}
+`,
+    // The light loop, patched at runtime: after the sun's shadow attenuates the light,
+    // remember what it hid (see ArcToon.lightPatch).
+    INJECT: `
+#if LIGHT{i}TYPE == DIRECTIONAL
+    arcShadowA = 1.0 - shadow;
+    arcSunAdd += lightColor * max(dot(litArgs_worldNormal, -dLightDirNormW), 0.0) * arcShadowA;
 #endif
 `,
-    // Shadow fraction at the point — shared by the colored shadow and the toon rim light.
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `
-float arcShadowA = 0.0;
-`,
-    // Right after the light of all sources is summed (default.fragment):
-    // diffuseBase and specularBase are not yet multiplied by color/texture. First
-    // the colored shadow: the sun visibility is the shadow variable of the LAST light
-    // (the sun; generator darkness 0), the unshadowed light is reconstructed
-    // by adding back the hidden fraction of the sun.
-    '!!aggShadow=aggShadow/numLights;': `$0
-#ifdef ARCSHADOW
+    END: `
 {
-    float arcV = clamp(shadow, 0.0, 1.0);
-    vec3 arcSunD = arcSunColor.rgb * max(0.0, dot(normalW, arcSunDir.xyz));
-    vec3 arcU = max(vec3(0.0), diffuseBase + arcSunD * (1.0 - arcV));
-    arcShadowA = 1.0 - arcV;
-    diffuseBase = arcU * mix(vec3(1.0), arcShadowColor.rgb, arcShadowA * arcShadowColor.a);
-#ifdef SPECULARTERM
-    specularBase *= 1.0 - arcShadowA;
-#endif
+    // Colored shadow: reconstruct the unshadowed light, tint what the sun lost. The tint
+    // factor is authored in display space (like the whole kit), so it enters the linear
+    // light through the sRGB decode.
+    vec3 arcU = max(vec3(0.0), dDiffuseLight + arcSunAdd);
+    dDiffuseLight = arcU * decodeGamma(mix(vec3(1.0), arcShadowColor.rgb, arcShadowA * arcShadowColor.a));
+    dSpecularLight *= 1.0 - arcShadowA;
+    // Light bands and the toon glint, over the whole sum (sun + sky, with shadow).
+    // The old pipeline quantized the RAW (gamma-space) light; this one computes in
+    // linear — quantize the sRGB-encoded value and fold the step back as a ratio, so the
+    // bands land where the author tuned them.
+    if (arcToonB.w > 0.5 && arcToonA.x >= 1.5) {
+        vec3 arcEnc = gammaCorrectOutput(max(dDiffuseLight, vec3(0.0)));
+        float arcV = max(arcEnc.r, max(arcEnc.g, arcEnc.b));
+        float arcQ = arcToonLevel(arcV);
+        dDiffuseLight *= arcV > 1e-4 ? arcQ / arcV : 1.0;
+        vec3 arcEncS = gammaCorrectOutput(max(dSpecularLight, vec3(0.0)));
+        float arcS = max(arcEncS.r, max(arcEncS.g, arcEncS.b));
+        float arcW = max(0.005, arcToonA.y * 0.25);
+        float arcH = smoothstep(arcToonB.x - arcW, arcToonB.x + arcW, arcS) * arcToonA.w;
+        dSpecularLight = arcS > 1e-5 ? dSpecularLight * (arcH / arcS) : vec3(0.0);
+    }
+    gl_FragColor.rgb = combineColor(litArgs_albedo, litArgs_sheen_specularity, litArgs_clearcoat_specularity);
+    gl_FragColor.rgb += litArgs_emission;
+    // Rim light along the silhouette edge — lighter than the base color, fades in shadow.
+    if (arcToonB.w > 0.5 && arcToonB.y > 0.0) {
+        float arcF = 1.0 - max(0.0, dot(litArgs_worldNormal, dViewDirW));
+        float arcE = 1.0 - arcToonB.z;
+        float arcR = smoothstep(arcE - 0.05, arcE + 0.05, arcF) * arcToonB.y * (1.0 - arcShadowA);
+        gl_FragColor.rgb += litArgs_albedo * arcR;
+    }
+    gl_FragColor.rgb = addFog(gl_FragColor.rgb);
+    gl_FragColor.rgb = toneMap(gl_FragColor.rgb);
+    gl_FragColor.rgb = gammaCorrectOutput(gl_FragColor.rgb);
 }
-#endif
-#ifdef ARCTOON
-if (arcToonA.x >= 1.5) {
-    float arcV = max(diffuseBase.r, max(diffuseBase.g, diffuseBase.b));
-    float arcQ = arcToonLevel(arcV);
-    diffuseBase = arcV > 1e-4 ? diffuseBase * (arcQ / arcV) : vec3(arcQ);
-#ifdef SPECULARTERM
-    float arcS = max(specularBase.r, max(specularBase.g, specularBase.b));
-    float arcW = max(0.005, arcToonA.y * 0.25);
-    float arcH = smoothstep(arcToonB.x - arcW, arcToonB.x + arcW, arcS) * arcToonA.w;
-    specularBase = (arcS > 1e-5 ? specularBase / arcS : vec3(0.0)) * arcH;
-#endif
-}
-#endif
-`,
-    // Rim light along the silhouette edge — lighter than the base color, fades out in shadow.
-    CUSTOM_FRAGMENT_BEFORE_FOG: `
-#ifdef ARCTOON
-if (arcToonB.y > 0.0) {
-    float arcF = 1.0 - max(0.0, dot(normalW, viewDirectionW));
-    float arcE = 1.0 - arcToonB.z;
-    float arcR = smoothstep(arcE - 0.05, arcE + 0.05, arcF) * arcToonB.y * (1.0 - arcShadowA);
-    color.rgb += baseColor.rgb * arcR;
-}
-#endif
 `
 };
 
@@ -657,20 +689,20 @@ if (arcToonB.y > 0.0) {
 const ArcToon = {
     s: { on: true, bands: 3, soft: 0.06, low: 0.35, ground: true, spec: 1, specSize: 0.12, rim: 0.25, rimWidth: 0.35 },
     registered: false,
+    _lightBase: null,     // the engine's lightFunctionLightPS with our injection
 
-    // Once per page: the factory attaches the plugin to every new StandardMaterial
-    // (material creation event). GLSL (WebGL) only — like the whole world.
+    // Once per page: prepare the patched light-loop chunk. Materials get the chunks in
+    // attach() — PlayCanvas has no global material factory hook, and every lit material
+    // of the kit is created by the kit itself (terrain, FBX, GLB conversion).
     register() {
-        if (this.registered || typeof BABYLON === 'undefined' || !BABYLON.MaterialPluginBase ||
-            typeof BABYLON.RegisterMaterialPlugin !== 'function') return;
+        if (this.registered || typeof pc === 'undefined') return;
         this.registered = true;
+        const base = pc.ShaderChunks.get(World3D.app.graphicsDevice, pc.SHADERLANGUAGE_GLSL).get('lightFunctionLightPS');
+        const ANCHOR = 'dAtten *= shadow;';
+        this._lightBase = base && base.includes(ANCHOR)
+            ? /** @type {string} */ (base).replace(ANCHOR, ANCHOR + ArcToonChunks.INJECT)
+            : /** @type {string} */ (base);
         this.load(World3D.cfg());
-        BABYLON.RegisterMaterialPlugin('ArcToon', (material) => {
-            if (!(material instanceof BABYLON.StandardMaterial)) return null;
-            if (material.shaderLanguage != null && material.shaderLanguage !== 0) return null;
-            material.arcToon = new ArcToonPlugin(material);
-            return material.arcToon;
-        });
     },
 
     load(c) {
@@ -687,222 +719,351 @@ const ArcToon = {
         };
     },
 
-    // New constants: values — as uniforms on the next bind; on/off
-    // — a shader rebuild of all materials with the plugin in all engines of the page.
+    // The toon chunks onto one lit StandardMaterial. Idempotent.
+    attach(view, mat) {
+        mat = /** @type {ArcMaterial} */ (mat);
+        if (!mat || mat.arcToon) return mat;
+        mat.arcToon = true;
+        const chunks = mat.shaderChunks.glsl;
+        chunks.set('litUserDeclarationPS', ArcToonChunks.DECL);
+        chunks.set('ambientPS', ArcToonChunks.AMBIENT);
+        chunks.set('lightFunctionLightPS', this._lightBase);
+        chunks.set('endPS', ArcToonChunks.END);
+        (view._toonMats || (view._toonMats = new Set())).add(mat);
+        this.pushOne(mat, World3D.cfg(), view);
+        mat.update();
+        return mat;
+    },
+
+    // New constants -> uniforms of one material. Bands 0 on the ground group when
+    // WORLD3D_TOON_GROUND is off; rim 0 there too (the old branching in the shader, not in
+    // a define — editor toggles do not recompile shaders).
+    pushOne(mat, c, view) {
+        const s = this.s;
+        const ground = !!(mat.arc && mat.arc.group === 'ground');
+        const bands = (ground && !s.ground) ? 0 : s.bands;
+        mat.setParameter('arcToonA', [bands, s.soft, s.low, s.spec]);
+        mat.setParameter('arcToonB', [s.specSize, ground ? 0 : s.rim, s.rimWidth, s.on ? 1 : 0]);
+        const sc = World3D.hexColor3(c.shadowColor);
+        mat.setParameter('arcShadowColor', [sc.r, sc.g, sc.b, Math.max(0, Math.min(1, c.shadowStrength))]);
+        const sky = World3D.hexColor3(c.skyLight);
+        const gnd = World3D.hexColor3(view && view.opts && view.opts.groundTint != null ? view.opts.groundTint : c.groundLight);
+        mat.setParameter('arcHemi', [sky.r, sky.g, sky.b, Math.max(0, c.skyIntensity)]);
+        mat.setParameter('arcHemiGround', [gnd.r, gnd.g, gnd.b]);
+    },
+
+    // New constants: values — as uniforms right away; the view re-pushes them all.
     apply(c) {
-        const wasOn = this.s.on;
         this.load(c || World3D.cfg());
-        if (wasOn === this.s.on || !BABYLON.EngineStore) return;
-        for (const eng of BABYLON.EngineStore.Instances) {
-            for (const sc of eng.scenes) {
-                for (const m of sc.materials) if (m.arcToon) m.arcToon.markAllDefinesAsDirty();
-                sc.resetCachedMaterial();
-            }
-        }
+    },
+
+    push(view, c) {
+        if (!view) return;
+        c = c || World3D.cfg();
+        for (const mat of (view._toonMats || [])) this.pushOne(mat, c, view);
     }
 };
 World3D.toon = ArcToon;
 
-// One 3D view: its own Babylon scene, camera, light and shadows.
+// --- Outline hull shader ---------------------------------------------------------
+const ArcOutline = {
+    VS: `
+#include "transformCoreVS"
+#include "normalCoreVS"
+uniform float arcOutlineWidth;
+uniform vec2 arcOutlineNdc;
+varying float vArcDepth;
+void main(void) {
+    mat4 model = getModelMatrix();
+    vec3 lp = getLocalPosition(vertex_position.xyz);
+    vec4 posW = model * vec4(lp, 1.0);
+    vec3 nW = mat3(model) * getLocalNormal(vertex_normal);\n    nW = normalize(nW + vec3(1e-9, 1e-9, 1e-9));
+    vec4 viewPos = matrix_view * posW;
+    vArcDepth = length(viewPos.xyz);
+    vec4 clip = matrix_projection * viewPos;
+    vec2 nd = normalize((matrix_projection * vec4(nW, 0.0)).xy + vec2(1e-7));
+    clip.xy += nd * arcOutlineWidth * arcOutlineNdc * max(clip.w, 0.0);
+    gl_Position = clip;
+}
+`,
+    FS: `
+precision highp float;
+uniform vec3 arcInkColor;
+uniform vec3 arcFogColor;
+uniform float arcFogDensity;
+varying float vArcDepth;
+void main(void) {
+    float f = exp(-vArcDepth * vArcDepth * arcFogDensity * arcFogDensity);
+    gl_FragColor = vec4(mix(arcFogColor, arcInkColor, clamp(f, 0.0, 1.0)), 1.0);
+}
+`
+};
+
+// --- Ink line shader --------------------------------------------------------------
+const ArcInk = {
+    VS: `
+attribute vec3 vertex_position;
+attribute vec3 aOther;
+attribute float aSign;
+uniform mat4 matrix_model;
+uniform mat4 matrix_view;
+uniform mat4 matrix_projection;
+uniform float arcInkWidth;
+varying float vArcDepth;
+void main(void) {
+    vec4 pV = matrix_view * matrix_model * vec4(vertex_position, 1.0);
+    vec4 qV = matrix_view * matrix_model * vec4(aOther, 1.0);
+    vec2 d = qV.xy - pV.xy;
+    float dl = length(d);
+    d = dl > 1e-9 ? d / dl : vec2(1.0, 0.0);
+    vec2 perp = vec2(d.y, -d.x) * aSign * arcInkWidth * 0.5;
+    pV.xy += perp;
+    vArcDepth = length(pV.xyz);
+    gl_Position = matrix_projection * pV;
+}
+`,
+    FS: `
+precision highp float;
+uniform vec3 arcInkColor;
+uniform vec3 arcFogColor;
+uniform float arcFogDensity;
+varying float vArcDepth;
+void main(void) {
+    float f = exp(-vArcDepth * vArcDepth * arcFogDensity * arcFogDensity);
+    gl_FragColor = vec4(mix(arcFogColor, arcInkColor, clamp(f, 0.0, 1.0)), 1.0);
+}
+`
+};
+
+// One 3D view: its own entity subtree, camera, light and shadows on the shared app.
 class View3D {
     // opts: { sky?, groundTint?, shadowColor?, fogDensity?, shadowRadius? } — constant overrides
     constructor(world, opts) {
         this.world = world;
         this.opts = opts;
         this.active = false;
-        this.engine = world.engine;
+        this.app = world.app;
+        this.uid = (View3D._uid = (View3D._uid || 0) + 1);
+        this.scene = this.app.scene;
 
-        const scene = new BABYLON.Scene(this.engine);
-        this.scene = scene;
-        // Right-handed system: X = x, Z = y of the map (y down) viewed from above
-        // puts east on the RIGHT; in a left-handed one the same world came out mirrored.
-        scene.useRightHandedSystem = true;
-        scene.detachControl();
-        scene.skipPointerMovePicking = true;
-        scene.skipFrustumClipping = false;
-        scene.autoClear = true;
-        scene.autoClearDepthAndStencil = true;
-        // The OVERLAY and ACTOR layers do NOT clear depth (World3D.LAYER): marks on top of
-        // the world are let through by their material's ALWAYS test, while ACTOR is still
-        // tested against the world depth. Clearing depth instead of ALWAYS has already been
-        // tried — ACTOR objects started showing through walls.
-        scene.setRenderingAutoClearDepthStencil(World3D.LAYER.OVERLAY, false);
-        scene.setRenderingAutoClearDepthStencil(World3D.LAYER.ACTOR, false);
-        scene.ambientColor = new BABYLON.Color3(0.35, 0.35, 0.38);
-        // Fog hides the ground edge at a low camera angle.
-        scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+        this.root = new pc.Entity('view' + this.uid);
+        this.app.root.addChild(this.root);
 
         const c = World3D.cfg();
 
-        // --- Camera: TargetCamera without built-in inputs, driven by CameraController ---
-        this.camera = new BABYLON.TargetCamera('cam', new BABYLON.Vector3(0, 600, 0), scene);
-        this.camera.fov = ((typeof CAMERA_FOV_DEG !== 'undefined') ? CAMERA_FOV_DEG : 52) * Math.PI / 180;
-        this.camera.minZ = 6;
-        this.camera.maxZ = 9000;
-        this.camera.setTarget(new BABYLON.Vector3(1, 0, 1));
-        scene.activeCamera = this.camera;
+        // --- Camera: a bare entity with a camera component, driven by CameraController
+        // through the facade below (map-space position and target, fov in radians).
+        this.camEntity = new pc.Entity('cam');
+        this.root.addChild(this.camEntity);
+        this.camEntity.addComponent('camera', {
+            fov: (typeof CAMERA_FOV_DEG !== 'undefined' ? CAMERA_FOV_DEG : 52),
+            nearClip: 6,
+            farClip: 9000,
+            clearColor: World3D.hexColor3(opts.sky != null ? opts.sky : c.sky),
+            clearColorBuffer: true,
+            layers: [pc.LAYERID_WORLD, World3D.LAYER_ID.OVERLAY, World3D.LAYER_ID.ACTOR]
+        });
+        this.camComp = this.camEntity.camera;
+        this.camEntity.setPosition(0, 600, 0);
+        this.camera = new ArcCamera(this);
 
-        // --- Light: sky (hemisphere) + sun; values — applyLighting ---
-        this.hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0, 1, 0), scene);
-        this.hemi.specular = new BABYLON.Color3(0, 0, 0);
+        // Engine-shaped shim for the old call sites (CameraController's aspect ratio,
+        // tests' stubs): the real engine is World3D.app.
+        this.engine = {
+            getAspectRatio: () => {
+                const dev = this.app.graphicsDevice;
+                return Math.max(0.01, dev.width / Math.max(1, dev.height));
+            },
+            getRenderWidth: () => this.app.graphicsDevice.width,
+            getRenderHeight: () => this.app.graphicsDevice.height,
+            getFps: () => World3D.fps()
+        };
 
-        this.sun = new BABYLON.DirectionalLight('sun', World3D.sunDirection(c), scene);
-        this.sun.specular = new BABYLON.Color3(0.25, 0.25, 0.25);
-        this.sun.autoUpdateExtends = false;
-        // Shadow map depth — from the sun position (LIGHT_DIST from the target):
-        // a narrow range = precision, a wide one (1..6000) lost shadows.
-        this.sun.shadowMinZ = View3D.LIGHT_DIST - 1200;
-        this.sun.shadowMaxZ = View3D.LIGHT_DIST + 1200;
+        // --- Light: the sun. The hemispheric sky lives in the toon ambient chunk.
+        this.sunEntity = new pc.Entity('sun');
+        this.root.addChild(this.sunEntity);
+        this.sunEntity.addComponent('light', { type: 'directional' });
+        this.sun = this.sunEntity.light;
+        this.sun.intensity = 1;
+        this.sun.color = new pc.Color(1, 1, 1);
         this._shadowRadius = opts.shadowRadius || (IS_MOBILE ? Math.min(520, c.shadowRadius) : c.shadowRadius);
+        this._mapSize = IS_MOBILE ? Math.max(512, c.shadowMap / 2) : c.shadowMap;
 
-        const mapSize = IS_MOBILE ? Math.max(512, c.shadowMap / 2) : c.shadowMap;
-        this._mapSize = mapSize;
-        this.shadow = new BABYLON.ShadowGenerator(mapSize, this.sun);
-        this.shadow.transparencyShadow = false;
         this.applyLighting(c);
         this.updateLightFrustum(0, 0, 0);
 
         this._syncFns = [];   // functions called before every 3D frame
+        this._miLayers = new Map();
+        /** @type {Map<pc.MeshInstance, pc.MeshInstance>} */
+        this._outlines = new Map();     // source instance -> outline hull instance
+        /** @type {Map<pc.MeshInstance, any>} */
+        this._inks = new Map();         // source instance -> ink ribbon record
+        /** @type {Record<string, pc.ShaderMaterial>} */
+        this._outlineMats = {};         // hull material per object kind
+        /** @type {Set<ArcMaterial>} */
+        this._toonMats = new Set();     // materials with the toon chunks
+        /** @type {pc.Asset[]} */
+        this._assets = [];              // container assets loaded for this view
         this.active = true;
         world.view = this;
     }
 
     // Light, sky, fog and shadows from the render constants (the view's opts override them).
-    // Also here — the colored shadow plugin data (scene.metadata.arcSun, arcShadow):
-    // shadow density and color are computed by the shader, Babylon's darkness is 0.
-    // The light is tuned so that flat ground comes out ≈1.0 (texture paint
-    // unchanged), slopes and shadows darken; sums above ~1.2 clamp to white.
+    // The shadow color/strength travel to the toon chunks as uniforms; the sun component
+    // only provides direction, intensity and the shadow map.
     applyLighting(c) {
         c = c || World3D.cfg();
         const o = this.opts || {};
-        const scene = this.scene;
+        const scene = this.app.scene;
         const sky = World3D.hexColor3(o.sky != null ? o.sky : c.sky);
-        scene.clearColor = new BABYLON.Color4(sky.r, sky.g, sky.b, 1);
-        scene.fogColor = sky;
+        this.camComp.clearColor = new pc.Color(sky.r, sky.g, sky.b, 1);
+        scene.fog.type = c.fog > 0 ? pc.FOG_EXP2 : pc.FOG_NONE;
+        scene.fogColor = new pc.Color(sky.r, sky.g, sky.b);
         scene.fogDensity = Math.max(0, o.fogDensity != null ? o.fogDensity : c.fog);
 
-        this.hemi.intensity = Math.max(0, c.skyIntensity);
-        this.hemi.diffuse = World3D.hexColor3(c.skyLight);
-        this.hemi.groundColor = World3D.hexColor3(o.groundTint != null ? o.groundTint : c.groundLight);
+        // Sun direction (mirrored world) + intensity and color in one component.
+        const dir = World3D.sunDirection(c);
+        this.sunEntity.setPosition(0, 0, 0);
+        this.sunEntity.lookAt(new pc.Vec3(dir.x, dir.y, dir.z).add(this.sunEntity.getPosition()), pc.Vec3.UP);
+        const col = World3D.hexColor3(c.sunColor);
+        this.sun.color = new pc.Color(col.r * Math.max(0, c.sunIntensity), col.g * Math.max(0, c.sunIntensity), col.b * Math.max(0, c.sunIntensity));
 
-        this.sun.direction = World3D.sunDirection(c);
-        this.sun.intensity = Math.max(0, c.sunIntensity);
-        this.sun.diffuse = World3D.hexColor3(c.sunColor);
-
-        const md = scene.metadata || (scene.metadata = {});
-        md.arcSun = {
-            dir: this.sun.direction.negate().normalize(),
-            color: this.sun.diffuse.scale(this.sun.intensity)
-        };
-        md.arcShadow = {
-            color: World3D.hexColor3(o.shadowColor != null ? o.shadowColor : c.shadowColor),
-            strength: Math.max(0, Math.min(1, c.shadowStrength))
-        };
-
-        const sg = this.shadow;
-        sg.setDarkness(0);   // shadow color and strength come from the plugin (ARCSHADOW), Babylon — visibility only
-        sg.bias = c.shadowBias;
-        // Shadow edge: 0 — hard (one map sample), otherwise PCF (WebGL2) or
-        // Poisson (WebGL1); on mobile — no higher than low quality.
+        const sg = this.sun;
+        sg.castShadows = true;
+        sg.shadowResolution = this._mapSize;
+        sg.numCascades = 1;
+        // Shadow edge: 0 — hard (one map sample), otherwise PCF 3/5 taps or PCSS;
+        // on mobile — no higher than the cheap filter.
         let soft = Math.max(0, Math.min(3, Math.round(c.shadowSoft)));
         if (IS_MOBILE && soft > 1) soft = 1;
-        const webgl2 = this.engine.webGLVersion >= 2;
-        if (webgl2) {
-            sg.usePoissonSampling = false;
-            sg.usePercentageCloserFiltering = soft > 0;
-            if (soft > 0) {
-                sg.filteringQuality = soft >= 3 ? BABYLON.ShadowGenerator.QUALITY_HIGH
-                    : (soft === 2 ? BABYLON.ShadowGenerator.QUALITY_MEDIUM : BABYLON.ShadowGenerator.QUALITY_LOW);
-            }
-        } else {
-            sg.usePercentageCloserFiltering = false;
-            sg.usePoissonSampling = soft > 0;
-        }
-        // Normal bias is in map TEXELS: "shadow acne" (stripes and a "sawtooth" on faces
-        // at an acute angle to the sun) grows with the texel, and the shadow frustum shrinks
-        // and grows (fitShadowFrustum). The edge filter compares depth on neighboring
-        // texels too — its radius is added to the constant (PCF 1/3/5 samples —
-        // 0.5/1.5/2.5 texels, Poisson — 1), otherwise with a soft edge the "sawtooth"
-        // comes back. updateLightFrustum converts it to world px.
-        const filter = soft === 0 ? 0 : (webgl2 ? [0, 0.5, 1.5, 2.5][soft] : 1);
-        this._normalBiasTexels = Math.max(0, c.shadowNormalBias) + filter;
-        // The sun position depends on the direction — recompute the ortho frustum.
+        sg.shadowType = soft === 0 ? pc.SHADOW_PCF1_32F : (soft === 1 ? pc.SHADOW_PCF1_32F : (soft === 2 ? pc.SHADOW_PCF3_32F : pc.SHADOW_PCF5_32F));
+        // Bias: PlayCanvas wants a depth bias as a fraction of the shadow map depth range
+        // and a normal offset in WORLD px — the constants keep their old meaning, scaled
+        // to the engine's units (measured against the Babylon reference).
+        sg.shadowBias = Math.max(0, Math.min(1, c.shadowBias * 50));
+        const texel = 2 * this._shadowRadius / this._mapSize;   // world px per shadow map texel
+        sg.normalOffsetBias = Math.max(0, c.shadowNormalBias) * texel;
         if (this._lightAt) this.updateLightFrustum(this._lightAt.x, this._lightAt.y, this._lightAt.h, this._lightAt.r);
+        World3D.toon.push(this, c);
     }
 
-    // The sun's ortho frustum follows the point of interest (usually the camera target):
-    // shadows are crisp where the player is looking, not smeared over the whole world.
-    // radius — override of the frustum half-size.
+    // Fog parameters for the custom shaders (outline, ink): color and density in use.
+    fogState(c) {
+        c = c || World3D.cfg();
+        const o = this.opts || {};
+        const sky = World3D.hexColor3(o.sky != null ? o.sky : c.sky);
+        return { r: sky.r, g: sky.g, b: sky.b, density: Math.max(0, o.fogDensity != null ? o.fogDensity : c.fog) };
+    }
+
+    // The sun's shadow frustum follows the point of interest (usually the camera target):
+    // shadows are crisp where the player is looking. PlayCanvas fits the ortho frustum to
+    // the shadow casters in range by itself; the range is shadowDistance from the camera.
     updateLightFrustum(x, y2d, h, radius) {
         const R = radius || this._shadowRadius;
-        const d = this.sun.direction;
-        const L = View3D.LIGHT_DIST;
         this._lightAt = { x: x, y: y2d, h: h || 0, r: radius };
-        this.sun.position = new BABYLON.Vector3(x - d.x * L, (h || 0) - d.y * L, y2d - d.z * L);
-        this.sun.orthoLeft = -R;
-        this.sun.orthoRight = R;
-        this.sun.orthoTop = R;
-        this.sun.orthoBottom = -R;
-        // Map texel in world px: Babylon expands the frustum by shadowOrthoScale on each side.
-        const texel = 2 * R * (1 + 2 * this.sun.shadowOrthoScale) / this._mapSize;
-        this.shadow.normalBias = (this._normalBiasTexels || 0) * texel;
+        this._fitMaxR = R;
+        this._updateShadowDistance();
     }
 
-    // The sun's ortho frustum fitted to the SHADOW CASTERS within maxR of the point of interest:
-    // the smaller the frustum, the more map texels per world px and the crisper the shadow (a
-    // 720 px frustum with a 1024 map gave 0.7 texels per px — the shadow blurred into a blob).
-    //   • center — the middle of the BOUNDS of the shadow casters (world bounding box) that
-    //     fall within maxR (the rest are beyond the screen edge, their shadow is not visible).
-    //     By positions the frustum cut off a big model's shadow: a building's position is one point;
-    //   • added to the half-size — the height of the shadow casters above the point of
-    //     interest as the sun sees it (× cos of the sun elevation: that is how far the top of
-    //     an object shifts in the sun's frustum), but no less than PAD;
-    //   • the radius is quantized in 32 px steps, the center — to the texel grid: otherwise
-    //     the shadow edge "crawls" across texels on every camera shift;
-    //   • a shadow caster with thin instances sits at the origin and its bounds would lie —
-    //     with it the frustum is taken by maxR.
+    // Fitted like the old fitShadowFrustum: the area around the ground point at the frame
+    // center, no wider than WORLD3D_SHADOW_RADIUS.
     fitShadowFrustum(x, y2d, h, maxR) {
         const R0 = Math.min(maxR || this._shadowRadius, this._shadowRadius);
-        const list = this.shadow ? this.shadow.getShadowMap().renderList : null;
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, top = h, bottom = h, n = 0, wide = false;
-        for (let i = 0; list && i < list.length; i++) {
-            const m = list[i];
-            if (m.hasThinInstances) { wide = true; break; }
-            if (!m.isEnabled(false)) continue;
-            m.computeWorldMatrix();
-            const bb = m.getBoundingInfo().boundingBox, a = bb.minimumWorld, b = bb.maximumWorld;
-            if (Math.abs((a.x + b.x) / 2 - x) > R0 || Math.abs((a.z + b.z) / 2 - y2d) > R0) continue;
-            if (a.x < x0) x0 = a.x;
-            if (b.x > x1) x1 = b.x;
-            if (a.z < y0) y0 = a.z;
-            if (b.z > y1) y1 = b.z;
-            if (b.y > top) top = b.y;
-            if (a.y < bottom) bottom = a.y;
-            n++;
+        this._lightAt = { x: x, y: y2d, h: h || 0, r: maxR };
+        this._fitMaxR = R0;
+        this._updateShadowDistance();
+    }
+
+    _updateShadowDistance() {
+        const at = this._lightAt || { x: 0, y: 0, h: 0 };
+        const eye = this.camEntity.getPosition();
+        const d = Math.hypot(eye.x + at.x, eye.y - at.h, eye.z - at.y);   // camera -> point of interest
+        this.sun.shadowDistance = Math.min(this.camComp.farClip, d + (this._fitMaxR || this._shadowRadius) + 200);
+    }
+
+    addShadowCaster(entity, includeDescendants) {
+        if (!entity) return;
+        for (const mi of this.meshInstancesOf(entity)) mi.castShadow = true;
+    }
+
+    removeShadowCaster(entity) {
+        if (!entity) return;
+        for (const mi of this.meshInstancesOf(entity)) mi.castShadow = false;
+    }
+
+    // --- Instance bookkeeping -----------------------------------------------------
+
+    // All mesh instances of an entity subtree (render components).
+    meshInstancesOf(entity) {
+        const out = [];
+        if (!entity) return out;
+        for (const rc of entity.findComponents('render')) out.push(...rc.meshInstances);
+        return out;
+    }
+
+    allMeshInstances() {
+        return this.meshInstancesOf(this.root);
+    }
+
+    // All StandardMaterials owned by this view's subtree (render constants, toon push).
+    materials() {
+        const seen = new Set();
+        for (const mi of this.allMeshInstances()) if (mi.material) seen.add(mi.material);
+        for (const m of (this._toonMats || [])) seen.add(m);
+        for (const m of Object.values(this._outlineMats || {})) seen.add(m);
+        return [...seen];
+    }
+
+    // Layer bookkeeping: a mesh instance lives in exactly one of the kit's layers
+    // (WORLD by default; ink lines and outline hulls follow their source).
+    putInLayer(mi, id) {
+        const comp = this.app.scene.layers;
+        const old = this._miLayers.get(mi);
+        if (old != null && old !== id) comp.getLayerById(old).removeMeshInstances([mi]);
+        if (old == null || old !== id) comp.getLayerById(id).addMeshInstances([mi], true);
+        this._miLayers.set(mi, id);
+    }
+
+    dropFromLayers(mi) {
+        const id = this._miLayers.get(mi);
+        if (id == null) return;
+        this.app.scene.layers.getLayerById(id).removeMeshInstances([mi]);
+        this._miLayers.delete(mi);
+    }
+
+    // The pc.Layer id a mesh instance lives in (ink/outline follow their source).
+    layerOf(mi) {
+        return this._miLayers.has(mi) ? this._miLayers.get(mi) : pc.LAYERID_WORLD;
+    }
+
+    // Move a whole object into one of World3D.LAYER groups (overlay marks, late actors).
+    setLayer(entity, group) {
+        const id = group === World3D.LAYER.OVERLAY ? World3D.LAYER_ID.OVERLAY
+            : group === World3D.LAYER.ACTOR ? World3D.LAYER_ID.ACTOR : pc.LAYERID_WORLD;
+        for (const mi of this.meshInstancesOf(entity)) this.putInLayer(mi, id);
+    }
+
+    // Ink line material of the view (shared by all ink instances).
+    inkMaterial(c) {
+        if (!this._inkMat) {
+            this._inkMat = new pc.ShaderMaterial({
+                uniqueName: 'arcInk' + this.uid,
+                attributes: {
+                    vertex_position: pc.SEMANTIC_POSITION,
+                    aOther: pc.SEMANTIC_ATTR6,
+                    aSign: pc.SEMANTIC_ATTR7
+                },
+                vertexGLSL: ArcInk.VS,
+                fragmentGLSL: ArcInk.FS
+            });
+            this._inkMat.cull = pc.CULLFACE_NONE;
+            this._inkMat.depthWrite = false;
+            this._inkMat.depthFunc = pc.FUNC_LESSEQUAL;
         }
-        if (wide || !n) { this.updateLightFrustum(x, y2d, h, R0); return; }
-        const PAD = 64;   // margin: the soft shadow edge and the corners of the bounds in the sun's frustum
-        const dy = this.sun.direction.y;
-        const rise = Math.max(top - h, h - bottom) * Math.sqrt(Math.max(0, 1 - dy * dy));
-        let R = Math.max(View3D.SHADOW_MIN_RADIUS, Math.max(x1 - x0, y1 - y0) / 2 + Math.max(PAD, rise));
-        R = Math.min(R0, Math.ceil(R / 32) * 32);
-        // Hysteresis: while the previous radius still fits and is not wider than needed by more
-        // than a step, keep it — otherwise at a step boundary R would flip between two
-        // values every other frame, and the shadow edge would jitter by a texel.
-        const prev = this._fitR;
-        if (prev != null && prev <= R0 && prev >= R && prev - R <= 32) R = prev;
-        this._fitR = R;
-        const q = 2 * R / Math.max(64, this._mapSize);
-        const cx = Math.round((x0 + x1) / 2 / q) * q, cy = Math.round((y0 + y1) / 2 / q) * q;
-        this.updateLightFrustum(cx, cy, h, R);
-    }
-
-    addShadowCaster(mesh, includeDescendants) {
-        if (this.shadow && mesh) this.shadow.addShadowCaster(mesh, includeDescendants !== false);
-    }
-
-    removeShadowCaster(mesh) {
-        if (this.shadow && mesh) this.shadow.removeShadowCaster(mesh, true);
+        const fog = this.fogState(c);
+        this._inkMat.setParameter('arcFogColor', [fog.r, fog.g, fog.b]);
+        this._inkMat.setParameter('arcFogDensity', fog.density);
+        return this._inkMat;
     }
 
     onBeforeFrame(fn) {
@@ -913,32 +1074,42 @@ class View3D {
         for (const fn of this._syncFns) {
             try { fn(); } catch (e) { console.error('World3D sync:', e); }
         }
+        // Outline width in NDC follows the drawing buffer size.
+        const dev = this.world.app.graphicsDevice;
+        for (const mat of Object.values(this._outlineMats || {})) {
+            mat.setParameter('arcOutlineNdc', [2 / Math.max(1, dev.width), 2 / Math.max(1, dev.height)]);
+        }
+        this._updateShadowDistance();
     }
 
     // --- Screen <-> world ---------------------------------------------------
 
-    // The camera was moved, the frame has not been drawn yet — update the projection
-    // matrices now (zoom to cursor, "follow the pointer" pan).
+    // The camera was moved, the frame has not been drawn yet — sync the hierarchy so the
+    // projections below read fresh matrices (zoom to cursor, "follow the pointer" pan).
     refreshMatrices() {
-        const cam = this.camera;
-        this.scene.setTransformMatrix(cam.getViewMatrix(true), cam.getProjectionMatrix(true));
+        this.camEntity.syncHierarchy();
     }
 
     _renderScale() {
         const cw = this.world.canvas.clientWidth || 1;
-        return this.engine.getRenderWidth() / cw;
+        return this.world.app.graphicsDevice.width / cw;
     }
 
     // Screen point (canvas CSS px) -> map point ({x, y}) under the cursor.
-    // With terrain — the ray intersection with the TERRAIN, without it — the plane Y = h.
+    // With terrain — the ray intersection with the TERRAIN, without it — the plane h.
     // null — the ray looks into the sky.
     pointerToGround(px, py, h, terrain) {
-        // createPickingRay expects canvas CSS pixels: it accounts for the render scale
-        // (hardwareScalingLevel) ITSELF. Multiplying by _renderScale() moved the point
-        // away from the cursor the more, the farther it was from the top-left corner.
-        const ray = this.scene.createPickingRay(px, py, BABYLON.Matrix.Identity(), this.camera, false);
-        const o = ray.origin, d = ray.direction;
+        const k = this._renderScale();
+        const dev = this.world.app.graphicsDevice;
+        const sx = px * k, sy = py * k;
+        const near = this.camComp.nearClip;
+        const cam = this.camComp.camera;
+        const p0 = cam.screenToWorld(sx, sy, near, dev.width, dev.height);
+        const p1 = cam.screenToWorld(sx, sy, near + 1, dev.width, dev.height);
+        const d = new pc.Vec3().sub2(p1, p0);
         if (Math.abs(d.y) < 1e-6) return null;
+        d.normalize();
+        const o = p0;
         const planeT = (yy) => (yy - o.y) / d.y;
         if (terrain && terrain.hgrid && Number.isFinite(terrain.hMin)) {
             // March along the ray from a level above the terrain maximum to a level below
@@ -949,7 +1120,7 @@ class View3D {
                 if (t1 > t0) {
                     const steps = Math.min(200, Math.max(48, Math.ceil((t1 - t0) / 4)));
                     const dt = (t1 - t0) / steps;
-                    const under = (t) => (o.y + d.y * t) < terrain.heightAt(o.x + d.x * t, o.z + d.z * t);
+                    const under = (t) => (o.y + d.y * t) < terrain.heightAt(-(o.x + d.x * t), o.z + d.z * t);
                     let ta = t0;
                     for (let i = 1; i <= steps; i++) {
                         const t = t0 + dt * i;
@@ -960,7 +1131,7 @@ class View3D {
                                 if (under(m)) b = m; else a = m;
                             }
                             const tm = (a + b) / 2;
-                            return { x: o.x + d.x * tm, y: o.z + d.z * tm };
+                            return { x: -(o.x + d.x * tm), y: o.z + d.z * tm };
                         }
                         ta = t;
                     }
@@ -969,39 +1140,90 @@ class View3D {
         }
         const t = planeT(h || 0);
         if (t <= 0) return null;
-        return { x: o.x + d.x * t, y: o.z + d.z * t };
+        return { x: -(o.x + d.x * t), y: o.z + d.z * t };
     }
 
     // Map point (x, y and height) -> screen CSS pixels of the canvas.
-    // visible — the point is inside the viewport and in front of the camera. Vector3.Project
-    // returns RENDER pixels — hence the division by _renderScale().
+    // visible — the point is inside the viewport and in front of the camera.
     projectToScreen(x, y2d, h) {
         const k = this._renderScale();
-        const w = this.engine.getRenderWidth(), hh = this.engine.getRenderHeight();
-        const p = BABYLON.Vector3.Project(
-            new BABYLON.Vector3(x, h || 0, y2d),
-            BABYLON.Matrix.Identity(),
-            this.scene.getTransformMatrix(),
-            this.camera.viewport.toGlobal(w, hh));
-        const sx = p.x / k, sy = p.y / k;
-        const behind = p.z > 1 || p.z < 0;
+        const dev = this.world.app.graphicsDevice;
+        this.refreshMatrices();
+        const w = new pc.Vec3(-x, h || 0, y2d);
+        const vp = new pc.Mat4().mul2(this.camComp.projectionMatrix, this.camComp.viewMatrix);
+        const m = vp.data;
+        const wc = w.x * m[3] + w.y * m[7] + w.z * m[11] + m[15];
+        const s = this.camComp.camera.worldToScreen(w, dev.width, dev.height);
+        const sx = s.x / k, sy = s.y / k;
+        const behind = wc <= 0;
         return {
             x: sx, y: sy, behind: behind,
-            visible: !behind && sx >= 0 && sy >= 0 && sx <= w / k && sy <= hh / k
+            visible: !behind && sx >= 0 && sy >= 0 && sx <= dev.width / k && sy <= dev.height / k
         };
     }
 
-    // Everything created in the scene (meshes, materials, outline layers) dies with it.
+    // Everything created in the view dies with it.
     dispose() {
         this.active = false;
         if (this.world.view === this) this.world.view = null;
         this._syncFns = [];
-        try { this.scene.dispose(); } catch (e) { /* already disposed */ }
+        for (const asset of (this._assets || [])) {
+            try { asset.unload(); this.app.assets.remove(asset); } catch (e) { /* ok */ }
+        }
+        try { this.root.destroy(); } catch (e) { /* already disposed */ }
+        this.root = null;
         this.scene = null;
     }
 }
+View3D._uid = 0;
 
-// Distance from the camera target to the "sun" (center of the shadow ortho frustum), px.
+// Distance from the camera target to the sun (kept for API compatibility; PlayCanvas
+// places the shadow camera by itself).
 View3D.LIGHT_DIST = 2200;
-// Minimum half-size of the shadow ortho frustum: one object with its shadow.
+// Minimum half-size of the shadow area: one object with its shadow.
 View3D.SHADOW_MIN_RADIUS = 140;
+
+// --- Camera facade ------------------------------------------------------------------
+// CameraController talks to a Babylon-shaped camera: fov in RADIANS, a position vector in
+// map space (x, height, y) with .set(), setTarget(vec). The facade mirrors everything into
+// the PlayCanvas entity.
+class ArcCamera {
+    constructor(view) {
+        this.view = view;
+        this._fov = ((typeof CAMERA_FOV_DEG !== 'undefined') ? CAMERA_FOV_DEG : 52) * Math.PI / 180;
+        this.position = new ArcVec3(0, 600, 0, (v) => this._apply(v, this._target));
+        this._target = new ArcVec3(1, 0, 1, (v) => this._apply(this.position, v));
+    }
+
+    get fov() { return this._fov; }
+    set fov(rad) {
+        this._fov = rad;
+        this.view.camComp.fov = Math.max(1, rad * 180 / Math.PI);
+    }
+
+    getTarget() { return this._target; }
+
+    setTarget(v) {
+        this._target.set(v.x, v.y, v.z);
+    }
+
+    _apply(pos, target) {
+        const e = this.view.camEntity;
+        e.setPosition(-pos.x, pos.y, pos.z);
+        e.lookAt(new pc.Vec3(-target.x, target.y, target.z), pc.Vec3.UP);
+    }
+}
+
+// A Babylon-shaped vector: mutable fields and set(), with a callback on change.
+class ArcVec3 {
+    constructor(x, y, z, onChange) {
+        this.x = x; this.y = y; this.z = z;
+        this._onChange = onChange;
+    }
+    set(x, y, z) {
+        this.x = x; this.y = y; this.z = z;
+        if (this._onChange) this._onChange(this);
+        return this;
+    }
+    copy(o) { return this.set(o.x, o.y, o.z); }
+}

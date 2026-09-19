@@ -7,11 +7,11 @@
 // Changing the object kind (kind) — rebuilding the object: the material group, ink edges
 // and outline are assigned by World3D.addObject on adding.
 //
-// Gizmo — BABYLON.GizmoManager (a utility layer on top of the scene). It listens to the
-// SCENE pointer, and View3D turns it off (detachControl) — the editor turns it back on.
-// The camera skips a press on the gizmo (camera.ignorePointer); a click without movement on
-// an object selects it. A move along X/Z keeps the height above the ground (the object
-// follows the terrain), a move along Y changes h.
+// Gizmo — the engine's Translate/Rotate/ScaleGizmo on a shared gizmo layer. The gizmos
+// listen to the app input themselves; the camera skips a press that hits the gizmo layer
+// (camera.ignorePointer + a Picker probe); a click without movement on an object selects
+// it. A move along X/Z keeps the height above the ground (the object follows the terrain),
+// a move along Y changes h.
 //
 // The layout is dirty when the JSON of the records differs from the saved one (saved).
 // Field precision — as the server writes: position and heading to 0.1, scale to 0.001.
@@ -23,8 +23,12 @@ const ObjectsPanel = {
     /** @type {LocationObject | null} */
     selected: null,     // a location.objects record
     saved: '[]',        // layout JSON as of load or save
-    /** @type {BABYLON.GizmoManager | null} */
+    /** @type {{ move: pc.TranslateGizmo, rotate: pc.RotateGizmo, scale: pc.ScaleGizmo } | null} */
     gizmo: null,
+    /** @type {pc.Layer | null} */
+    gizmoLayer: null,
+    /** @type {pc.Picker | null} */
+    _picker: null,
     propEls: null,      // property fields of the selected one: { pos: { x, y, h }, rot, scale }
     _down: null,        // LMB press point: a click without movement selects an object
     _importing: false,
@@ -43,13 +47,11 @@ const ObjectsPanel = {
 
     init(lab) {
         this.lab = lab;
-        const scene = lab.location.view.scene;
-        scene.attachControl(true, true, true);
-        this.gizmo = new BABYLON.GizmoManager(scene);
-        this.gizmo.usePointerToAttachGizmos = false;
+        const app = lab.location.view.world.app;
+        this.gizmoLayer = pc.Gizmo.createLayer(app, 'Gizmo');
         this.setupGizmos();
         this.setGizmoMode('move');
-        this.gizmo.attachToMesh(null);
+        this.attachGizmos(null);
         lab.camera.ignorePointer = (e) => this.gizmoHit(e);
         for (const btn of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#gizmo-modes [data-gizmo]'))) {
             btn.addEventListener('click', () => this.setGizmoMode(btn.dataset.gizmo));
@@ -74,7 +76,7 @@ const ObjectsPanel = {
 
     select(rec, fromView) {
         this.selected = rec && this.lab.location.objects.includes(rec) ? rec : null;
-        this.gizmo.attachToMesh(this.selected && this.selected.mesh ? this.selected.mesh : null);
+        this.attachGizmos(this.selected && this.selected.mesh ? this.selected.mesh : null);
         if (fromView && this.selected) PaneTabs.show('objects');
         this.render();
     },
@@ -100,7 +102,7 @@ const ObjectsPanel = {
     watch(rec) {
         rec.loaded.then(() => {
             if (rec === this.selected) {
-                this.gizmo.attachToMesh(rec.mesh);
+                this.attachGizmos(rec.mesh);
                 this.renderProps();   // model parts for the "Animation" section
             }
             if (rec.error) Toast.show(I18N.t('toast.modelFailed', { url: rec.def.model, msg: rec.error }), true);
@@ -115,76 +117,78 @@ const ObjectsPanel = {
     // Move — axes and a square along the ground, rotate — X/Y/Z rings, scale — along the
     // axes, the center — uniform. World axes: X — right on the map, Z — down, Y — up.
     setupGizmos() {
-        const gm = this.gizmo, C = (hex) => BABYLON.Color3.FromHexString(hex);
-        const colors = { x: C('#f0525f'), y: C('#62d26f'), z: C('#4a90f0') }, hover = C('#ffd24a');
-        const paint = (g, color) => {
-            for (const [mat, c] of [[g.coloredMaterial, color], [g.hoverMaterial, hover]]) {
-                if (!mat) continue;
-                mat.disableLighting = true;
-                mat.emissiveColor = c;
-                mat.diffuseColor = BABYLON.Color3.Black();
-                mat.specularColor = BABYLON.Color3.Black();
-            }
+        const view = this.lab.location.view;
+        const cam = view.camComp;
+        const layer = this.gizmoLayer;
+        this.gizmo = {
+            move: new pc.TranslateGizmo(cam, layer),
+            rotate: new pc.RotateGizmo(cam, layer),
+            scale: new pc.ScaleGizmo(cam, layer)
         };
-        gm.positionGizmoEnabled = true;
-        gm.rotationGizmoEnabled = true;
-        gm.scaleGizmoEnabled = true;
-        const pg = gm.gizmos.positionGizmo, rg = gm.gizmos.rotationGizmo, sg = gm.gizmos.scaleGizmo;
-        pg.planarGizmoEnabled = true;
-        pg.xPlaneGizmo.isEnabled = false;
-        pg.zPlaneGizmo.isEnabled = false;
-        for (const g of [pg, rg, sg]) g.updateGizmoRotationToMatchAttachedMesh = false;
-        for (const axis of ['x', 'y', 'z']) {
-            paint(pg[axis + 'Gizmo'], colors[axis]);
-            paint(rg[axis + 'Gizmo'], colors[axis]);
-            paint(sg[axis + 'Gizmo'], colors[axis]);
+        // World axes (the map's X/Z and the height Y), not the object's own rotation.
+        for (const g of Object.values(this.gizmo)) {
+            if ('coordinateSpace' in g) g.coordinateSpace = pc.GIZMOSPACE_WORLD;
         }
-        paint(pg.yPlaneGizmo, colors.y);
-        paint(sg.uniformScaleGizmo, C('#e8ecf1'));
-
         const track = (g, onDrag) => {
-            g.dragBehavior.onDragStartObservable.add(() => { this._dragBefore = this.snapshot(); });
-            g.dragBehavior.onDragObservable.add(onDrag);
-            g.dragBehavior.onDragEndObservable.add(() => this.onGizmoDragEnd());
+            g.on(pc.TransformGizmo.EVENT_TRANSFORMSTART, () => { this._dragBefore = this.snapshot(); });
+            g.on(pc.TransformGizmo.EVENT_TRANSFORMMOVE, onDrag);
+            g.on(pc.TransformGizmo.EVENT_TRANSFORMEND, () => this.onGizmoDragEnd());
         };
-        for (const g of [pg.xGizmo, pg.zGizmo, pg.yPlaneGizmo]) track(g, () => this.onMoveDrag(false));
-        track(pg.yGizmo, () => this.onMoveDrag(true));
-        for (const g of [rg.xGizmo, rg.yGizmo, rg.zGizmo]) track(g, () => this.onRotateDrag());
-        for (const g of [sg.xGizmo, sg.yGizmo, sg.zGizmo, sg.uniformScaleGizmo]) track(g, () => this.onScaleDrag());
+        track(this.gizmo.move, () => this.onMoveDrag(this._moveVertical));
+        track(this.gizmo.rotate, () => this.onRotateDrag());
+        track(this.gizmo.scale, () => this.onScaleDrag());
+        // The move gizmo reports which handle drags: the Y arrow changes h, the rest follow the ground.
+        this._moveVertical = false;
+        this.gizmo.move.on(pc.Gizmo.EVENT_POINTERDOWN, () => {
+            // The Y arrow points up on screen; the drag decides later — read it from the
+            // position delta instead: a height change without an x/y change is vertical.
+            const rec = this.selected;
+            this._moveStart = rec && rec.mesh ? rec.mesh.getPosition().clone() : null;
+        });
+    },
+
+    attachGizmos(entity) {
+        // attach() with no argument detaches (attach(null) would keep a null node).
+        for (const g of Object.values(this.gizmo || {})) { if (entity) g.attach(entity); else g.attach(); }
     },
 
     // Is a gizmo handle under the pointer? isHovered is updated only by mouse movement —
     // a touch and a quick click arrive without it, hence also a direct pick of the utility layer.
     gizmoHit(e) {
-        if (this.gizmo.isHovered) return true;
-        const layer = this.gizmo.utilityLayer;
-        if (!layer || !this.gizmo.attachedMesh) return false;
+        if (!this.gizmoLayer || !this.selected) return false;
+        const view = this.lab.location.view;
+        const dev = view.world.app.graphicsDevice;
+        if (!this._picker) this._picker = new pc.Picker(view.world.app, dev.width, dev.height);
+        this._picker.resize(dev.width, dev.height);
         const r = this.lab.canvas.getBoundingClientRect();
-        const hit = layer.utilityLayerScene.pick(e.clientX - r.left, e.clientY - r.top,
-            (m) => m.isPickable && m.isEnabled(), false, this.lab.location.view.camera);
-        return !!(hit && hit.hit);
+        const k = dev.width / Math.max(1, r.width);
+        this._picker.prepare(view.camComp, this.gizmoLayer);
+        return this._picker.getSelection((e.clientX - r.left) * k, (e.clientY - r.top) * k).length > 0;
     },
 
     setGizmoMode(mode) {
         this.gizmoMode = ['move', 'rotate', 'scale'].includes(mode) ? mode : 'move';
-        this.gizmo.positionGizmoEnabled = this.gizmoMode === 'move';
-        this.gizmo.rotationGizmoEnabled = this.gizmoMode === 'rotate';
-        this.gizmo.scaleGizmoEnabled = this.gizmoMode === 'scale';
+        this.gizmo.move.enabled = this.gizmoMode === 'move';
+        this.gizmo.rotate.enabled = this.gizmoMode === 'rotate';
+        this.gizmo.scale.enabled = this.gizmoMode === 'scale';
         for (const btn of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#gizmo-modes [data-gizmo]'))) {
             btn.classList.toggle('active', btn.dataset.gizmo === this.gizmoMode);
         }
     },
 
     // Move: along X/Z and along the ground the height above the ground stays (the object follows the terrain); along Y — h changes.
-    onMoveDrag(vertical) {
+    onMoveDrag() {
         const rec = this.selected;
         if (!rec || !rec.mesh) return;
-        const p = rec.mesh.position, d = rec.def, t = this.lab.location.terrain;
-        const ground = t ? t.heightAt(p.x, p.z) : 0;
-        d.x = this.round(p.x, 1);
-        d.y = this.round(p.z, 1);
-        if (vertical) d.h = this.round(p.y - ground, 1);
-        else p.y = ground + (Number(d.h) || 0);
+        const w = rec.mesh.getPosition();
+        // The gizmo works in the mirrored world; the records live in map space.
+        const mx = -w.x, my = w.z, d = rec.def, t = this.lab.location.terrain;
+        const ground = t ? t.heightAt(mx, my) : 0;
+        const vertical = this._moveStart ? Math.abs(w.y - this._moveStart.y) > 1e-6 &&
+            Math.abs(w.x - this._moveStart.x) < 1e-6 && Math.abs(w.z - this._moveStart.z) < 1e-6 : false;
+        d.x = this.round(mx, 1);
+        d.y = this.round(my, 1);
+        if (vertical) d.h = this.round(w.y - ground, 1);
         this.syncProps();
         this.renderHeader();
     },
@@ -194,9 +198,10 @@ const ObjectsPanel = {
     onRotateDrag() {
         const rec = this.selected, m = rec && rec.mesh;
         if (!m) return;
-        const e = m.rotationQuaternion ? m.rotationQuaternion.toEulerAngles() : m.rotation;
-        const deg = (v) => this.round(((v * 180 / Math.PI + 180) % 360 + 360) % 360 - 180, 1);
-        rec.def.rot = [deg(e.x), deg(-e.y), deg(e.z)];
+        // The quaternion of the mirrored world back into map euler degrees (y — heading).
+        const e = World3D.eulerFromQuat(m.rotation);
+        const deg = (v) => this.round(((v + 180) % 360 + 360) % 360 - 180, 1);
+        rec.def.rot = [deg(e[0]), deg(-e[1]), deg(e[2])];
         this.syncProps();
         this.renderHeader();
     },
@@ -204,7 +209,8 @@ const ObjectsPanel = {
     onScaleDrag() {
         const rec = this.selected, m = rec && rec.mesh;
         if (!m) return;
-        rec.def.scale = [m.scaling.x, m.scaling.y, m.scaling.z].map(v => Math.max(0.001, this.round(v, 3)));
+        const s = m.getLocalScale();
+        rec.def.scale = [s.x, s.y, s.z].map(v => Math.max(0.001, this.round(v, 3)));
         this.syncProps();
         this.renderHeader();
     },
@@ -245,7 +251,7 @@ const ObjectsPanel = {
                 loc.placeObject(rec);
             });
         } else {
-            this.gizmo.attachToMesh(null);
+            this.attachGizmos(null);
             for (const rec of loc.objects.slice()) loc.removeObject(rec);
             for (const d of defs) this.watch(loc.addObject(d));
         }
@@ -267,7 +273,7 @@ const ObjectsPanel = {
         const rec = this.selected;
         if (!rec) return;
         const before = this.snapshot();
-        this.gizmo.attachToMesh(null);
+        this.attachGizmos(null);
         this.lab.location.removeObject(rec);
         this.select(null);
         this.commit(null, before);
@@ -292,7 +298,7 @@ const ObjectsPanel = {
         const rec = this.selected;
         if (!rec || rec.def.kind === kind) return;
         const loc = this.lab.location, at = loc.objects.indexOf(rec), before = this.snapshot();
-        this.gizmo.attachToMesh(null);
+        this.attachGizmos(null);
         loc.removeObject(rec);
         const fresh = loc.addObject(Object.assign(JSON.parse(JSON.stringify(rec.def)), { kind }));
         loc.objects.splice(loc.objects.indexOf(fresh), 1);
@@ -336,9 +342,13 @@ const ObjectsPanel = {
     // outward from the model center, so that "clockwise" is what is seen from outside.
     // Coordinates — of the model file: part vertices, pivot and axes (Model3D) are in them.
     guessAxis(rec, name) {
-        const parts = rec.mesh ? rec.mesh.getChildMeshes(true) : [];
-        const mesh = parts.find(m => m.metadata && m.metadata.part === name);
-        const md = mesh && mesh.metadata, pos = mesh && mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        const parts = rec.mesh ? rec.mesh.find(n => {
+            const md = /** @type {ArcNode} */ (n).meta;
+            return !!md && !!md.part;
+        }) : [];
+        const node = /** @type {ArcNode} */ (parts.find(m => /** @type {ArcNode} */ (m).meta.part === name));
+        const md = node && node.meta;
+        const pos = node && node.render && node.render.meshInstances[0] ? this._localPositions(node.render.meshInstances[0].mesh) : null;
         if (!md || !md.axes || !pos) return 'y';
         const p = md.pivot, along = (v, x, y, z) => (x - p[0]) * v[0] + (y - p[1]) * v[1] + (z - p[2]) * v[2];
         let best = 'y', span = Infinity;
@@ -351,14 +361,42 @@ const ObjectsPanel = {
             }
             if (hi - lo < span) { span = hi - lo; best = k; }
         }
-        const lo = new BABYLON.Vector3(Infinity, Infinity, Infinity), hi = lo.negate();
-        for (const m of parts) {
-            const b = m.getBoundingInfo().boundingBox;
-            lo.minimizeInPlace(b.minimum);
-            hi.maximizeInPlace(b.maximum);
+        // Model center in the model's own space: the bounds of every part's vertices.
+        let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+        for (const n of parts) {
+            for (const mi of (n.render ? n.render.meshInstances : [])) {
+                const pp = this._localPositions(mi.mesh);
+                for (let i = 0; i < pp.length; i += 3) {
+                    for (let k = 0; k < 3; k++) {
+                        if (pp[i + k] < lo[k]) lo[k] = pp[i + k];
+                        if (pp[i + k] > hi[k]) hi[k] = pp[i + k];
+                    }
+                }
+            }
         }
-        const c = lo.add(hi).scale(0.5);
-        return (along(md.axes[best], c.x, c.y, c.z) > 0 ? '-' : '') + best;
+        const c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+        return (along(md.axes[best], c[0], c[1], c[2]) > 0 ? '-' : '') + best;
+    },
+
+    // Locked position stream of a mesh, in the mesh's own space.
+    _localPositions(mesh0) {
+        const mesh = /** @type {ArcMesh} */ (mesh0);
+        if (!mesh || !mesh.vertexBuffer) return null;
+        if (mesh._arcPosCache) return mesh._arcPosCache;
+        const vb = mesh.vertexBuffer, fmt = vb.format;
+        const iP = fmt.elements.find(el => el.name === pc.SEMANTIC_POSITION);
+        if (!iP) return null;
+        const F = new Float32Array(/** @type {ArrayBuffer} */ (vb.lock()));
+        const stride = fmt.size / 4, o = iP.offset / 4;
+        const out = new Float32Array(vb.numVertices * 3);
+        for (let v = 0; v < vb.numVertices; v++) {
+            out[v * 3] = F[v * stride + o];
+            out[v * 3 + 1] = F[v * stride + o + 1];
+            out[v * 3 + 2] = F[v * stride + o + 2];
+        }
+        vb.unlock();
+        mesh._arcPosCache = out;
+        return out;
     },
 
     uniqueName(base) {
@@ -558,7 +596,10 @@ const ObjectsPanel = {
             host.appendChild(this.row('obj.animClip', 'obj.animClipHint', clip));
             return;
         }
-        const names = rec.mesh ? rec.mesh.getChildMeshes(true).map(m => m.metadata && m.metadata.part).filter(Boolean) : [];
+        const names = rec.mesh ? rec.mesh.find(n => {
+            const md = /** @type {ArcNode} */ (n).meta;
+            return !!md && !!md.part;
+        }).map(m => /** @type {ArcNode} */ (m).meta.part) : [];
         if (a && !names.includes(a.part)) names.push(a.part);
         const part = this.choice([['', I18N.t('obj.animNone')]].concat(names.map(n => [n, n])), a ? a.part : '');
         part.addEventListener('change', () => {

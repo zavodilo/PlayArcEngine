@@ -1,10 +1,10 @@
 // Debug3D without 3D: the winding rule of the scene lint, the normal map verdict and the held
-// view pose. Babylon is a stub — only the pure parts are called.
+// view pose. PlayCanvas is a stub — only the pure parts are called.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadScripts, stub } from './browser-scripts.mjs';
 
-const page = loadScripts(['js/Debug3D.js'], { BABYLON: stub(), World3D: stub() });
+const page = loadScripts(['js/Debug3D.js'], { pc: stub(), World3D: stub() });
 const Debug3D = page.get('Debug3D');
 
 // A unit quad in the XZ plane with normals up. Indices (0, 1, 2): cross(b - a, c - a) — down,
@@ -29,28 +29,27 @@ test('обход граней: доля треугольников против 
   assert.ok(r.total <= 100, 'выборка ' + r.total);
 });
 
-test('вердикт стороны: CW ждёт обход против нормалей, CCW — по нормалям, зеркало меняет местами', () => {
-  const v = (against, side, mirrored) => Debug3D.sideVerdict(against, side, mirrored).verdict;
-  assert.equal(v(1, 0, false), 'ok');          // примитив Babylon, Terrain3D, Model3D
-  assert.equal(v(0, 1, false), 'ok');          // glTF с CounterClockWiseSideOrientation
-  assert.equal(v(0, 0, false), 'inverted');    // сетка с обходом glTF и стороной по умолчанию — изнанка
-  assert.equal(v(1, 1, false), 'inverted');
-  assert.equal(v(0, 0, true), 'ok');           // отрицательный масштаб переворачивает сторону
-  assert.equal(v(1, 0, true), 'inverted');
-  assert.equal(v(0.5, 0, false), 'mixed');     // двусторонние карточки
-  assert.equal(v(0.95, 0, false), 'ok');       // единичные перевёрнутые треугольники — шум
-  assert.equal(Debug3D.sideVerdict(0.2, 0, false).wrong, 0.8);
+test('вердикт стороны: обход по нормалям — норма, зеркало меняет местами', () => {
+    const v = (against, mirrored) => Debug3D.sideVerdict(against, mirrored).verdict;
+    assert.equal(v(0, false), 'ok');            // PlayCanvas: front face is counter-clockwise
+    assert.equal(v(1, false), 'inverted');      // the mesh draws its inside
+    assert.equal(v(1, true), 'ok');             // a mirrored node scale flips the winding
+    assert.equal(v(0, true), 'inverted');
+    assert.equal(v(0.5, false), 'mixed');       // double-sided cards
+    assert.equal(v(0.05, false), 'ok');         // single flipped triangles — noise
+    assert.equal(Debug3D.sideVerdict(0.2, false).wrong, 0.2);
+    assert.equal(Debug3D.sideVerdict(0.2, true).wrong, 0.8);
 });
 
-test('карта нормалей: в правосторонней сцене OpenGL-карте нужен invertNormalMapY, DirectX — нет', () => {
-  const v = (url, invY, rh = true) => Debug3D.normalMapVerdict(url, invY, rh);
-  assert.equal(v('assets/bark_nor_gl.jpg', true), 'ok');
-  assert.equal(v('assets/bark_nor_gl.jpg', false), 'wrong');
-  assert.equal(v('assets/bark_nor_dx.png', false), 'ok');
-  assert.equal(v('assets/bark_nor_dx.png', true), 'wrong');
-  assert.equal(v('assets/rock.glb#normal', false), 'wrong');
-  assert.equal(v('assets/bark_normal.jpg', false), 'unknown');   // по имени конвенцию не узнать
-  assert.equal(v('assets/bark_nor_gl.jpg', false, false), 'unknown');   // левосторонняя сцена — не судим
+test('карта нормалей: OpenGL-карта читается как есть, DirectX — с инверсией', () => {
+    const v = (url, inverted) => Debug3D.normalMapVerdict(url, inverted);
+    assert.equal(v('assets/bark_nor_gl.jpg', false), 'ok');
+    assert.equal(v('assets/bark_nor_gl.jpg', true), 'wrong');
+    assert.equal(v('assets/bark_nor_dx.png', true), 'ok');
+    assert.equal(v('assets/bark_nor_dx.png', false), 'wrong');
+    assert.equal(v('assets/rock.glb#normal', false), 'ok');
+    assert.equal(v('assets/rock.glb#normal', true), 'wrong');
+    assert.equal(v('assets/unknown.png', false), 'unknown');
 });
 
 test('поза удержанного вида: глаз не ниже рельефа, цель — точкой или курсом и наклоном', () => {

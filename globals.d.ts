@@ -2,11 +2,28 @@
 // Here is what cannot be described with JSDoc in a classic script: fields the code attaches to
 // foreign objects, and records shared by the game and the editor.
 
-declare namespace BABYLON {
-    interface Material {
-        /** Toon plugin (World3D.toon.register attaches it to every StandardMaterial). */
-        arcToon?: ArcToonPlugin;
-    }
+// The kit's bookkeeping on top of engine objects (PlayCanvas classes come from
+// libs/playcanvas.d.ts; these interfaces extend them for the JSDoc check).
+/** StandardMaterial with the kit's group/toon marks (World3D.applyMaterialConstants). */
+interface ArcMaterial extends pc.StandardMaterial {
+    /** { group: 'ground' | 'prop' | 'actor', outer?, specPower? }. */
+    arc?: { group?: string; outer?: boolean; specPower?: number };
+    /** Toon chunks attached (World3D.toon.attach). */
+    arcToon?: boolean;
+}
+/** Entity with the kit's metadata: a model part (pivot/axes) or a location object link. */
+interface ArcNode extends pc.Entity {
+    meta?: {
+        part?: string;
+        pivot?: number[];
+        axes?: { x: number[]; y: number[]; z: number[] };
+        locationObject?: LocationObject;
+    };
+}
+/** Mesh with the kit's caches (ink ribbon, locked positions). */
+interface ArcMesh extends pc.Mesh {
+    _arcPosCache?: Float32Array;
+    _arcInkCache?: { angle: number; mesh: pc.Mesh | null };
 }
 
 interface Window {
@@ -62,20 +79,19 @@ interface LocationObjectDef {
 /** Location object: Location3D.objects. */
 interface LocationObject {
     def: LocationObjectDef;
-    /** Model root; null until it has loaded or if it was not found. */
-    mesh: BABYLON.Mesh | null;
+    /** Model root entity; null until it has loaded or if it was not found. */
+    mesh: pc.Entity | null;
     error: string | null;
     loaded: Promise<LocationObject>;
     /** Part spin state (Location3D.spinPart). */
     spin?: {
         name: string;
-        root: BABYLON.Mesh;
-        mesh: BABYLON.AbstractMesh | null;
+        root: pc.Entity;
+        mesh: pc.Entity | null;
         angle: number;
-        axis: BABYLON.Vector3;
-        q: BABYLON.Quaternion;
+        axis: pc.Vec3;
     } | null;
     /** The clip Location3D.playClip last asked for and the model root it asked. */
     clip?: string;
-    clipRoot?: BABYLON.Mesh | null;
+    clipRoot?: pc.Entity | null;
 }

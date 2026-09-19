@@ -43,7 +43,7 @@ class Game {
         if (this._fpsTimer <= 0) {
             this._fpsTimer = 0.5;
             const fps = UI.get('fps');
-            if (fps) fps.setText(Math.round(World3D.engine.getFps()) + ' fps');
+            if (fps) fps.setText(Math.round(World3D.fps()) + ' fps');
         }
     }
 

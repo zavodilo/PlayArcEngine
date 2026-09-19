@@ -95,7 +95,7 @@ const WORLD3D_SKYLIGHT_COLOR = 0xb1d8f7; // sky light color (faces looking up)
 const WORLD3D_GROUNDLIGHT_COLOR = 0xc2c7ad; // fill light from below (reflection off the ground)
 const WORLD3D_SKY_COLOR = 0x8fc3e0;     // sky and fog color
 const WORLD3D_FOG_DENSITY = 0.00032;    // exponential fog toward the horizon (0 — off)
-// Shadows: one color for all (painted by the toon plugin, Babylon only provides sun visibility)
+// Shadows: one color for all (painted by the toon chunks, the sun only provides visibility)
 const WORLD3D_SHADOW_COLOR = 0x0f3a4d;  // shadow color
 const WORLD3D_SHADOW_STRENGTH = 0.52;    // shadow strength 0..1: a surface in shadow is multiplied by a blend of white and the shadow color
 const WORLD3D_SHADOW_SOFT = 2;          // edge: 0 — hard (for toon), 1..3 — PCF low/medium/high (mobile — no higher than 1)

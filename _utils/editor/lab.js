@@ -7,9 +7,9 @@
 // Shift+LMB — pan, wheel — zoom to cursor, the game limits are lifted);
 // "game" — exactly the game camera: the same limits and controls, start on R.
 //
-// The frame is drawn EVERY tick: the engine is created with preserveDrawingBuffer: false, and
-// on a skipped frame Babylon shows not the previous picture but garbage from the buffer.
-// In a background tab the browser stops requestAnimationFrame by itself.
+// The frame is drawn EVERY tick: the engine draws on demand (World3D.renderFrame), and a
+// skipped frame would leave the previous picture stale anyway. In a background tab the
+// browser stops requestAnimationFrame by itself.
 
 /** @satisfies {Record<string, any>} */
 const Lab = {

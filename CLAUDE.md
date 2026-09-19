@@ -1,11 +1,12 @@
 # ArcEngine — набор для 3D-игр в браузере
 
 Основа для 3D-игр в браузере, заточенная под работу с Claude Code: ванильный
-JS + Babylon.js 9.26 (`libs/babylon.js`, локально), ноль npm-зависимостей, никакой
-сборки — классические `<script>` и глобалы. Игра при запуске показывает локацию:
-земля с холмами, небо, свет, тени, toon-шейдер, камера, объекты из `Objects.js` (модели FBX и
-GLB из `assets/models/`; GLB — со скелетом и клипами анимации), HUD из `UILayout.js` и пример
-игры `Game.js`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
+JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-зависимостей, никакой
+сборки — классические `<script>` и глобалы (`pc`). Мир движка — зеркало карты по X
+(PlayCanvas левосторонний, карта правосторонняя по традиции; скилл `world3d`, §Coordinates).
+Игра при запуске показывает локацию: земля с холмами, небо, свет, тени, toon-шейдер, камера,
+объекты из `Objects.js` (модели FBX и GLB из `assets/models/`; GLB — со скелетом и клипами
+анимации), HUD из `UILayout.js` и пример игры `Game.js`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
 «свободная/игровая», toon вкл/выкл, вкладка Global Settings (все глобальные настройки,
 сохранение в `Constants.js`), вкладка Objects (импорт FBX/GLB, гизмо, свойства объектов,
 анимация — вращение части или клип, сохранение в `Objects.js`) и вкладка UI (раскладка
@@ -56,7 +57,7 @@ Git: что не едет в репозиторий — `.gitignore` (`.claude/`
    `const ИМЯ = <число>;`. Код читает константу через `typeof ИМЯ !== 'undefined'` с
    дефолтом: в игре это лексический `const`, в редакторе — свойство `window`.
 4. **3D — представление.** Логика игры хранит своё состояние сама и не спрашивает у
-   Babylon высоты или пересечения для решений, которые должны совпадать на всех
+   движка высоты или пересечения для решений, которые должны совпадать на всех
    устройствах (клетка террейна на мобильных крупнее).
 5. **Объекты мира — через `World3D.addObject(view, mesh, 'actor' | 'prop')`**: группа
    материала, тень, контур и обводка. Проекции экран↔мир — только через `View3D`.
@@ -92,7 +93,7 @@ js/               код игры — классические скрипты:
   World3D.js      движок: init/renderFrame, View3D (камера, свет, тени, проекции), cfg(),
                   toon-шейдер ArcToonPlugin, контур рёбер, обводка силуэта, addObject
   Terrain3D.js    земля: поле высот из шума, сетка + кольцо за краем, heightAt/tiltAt
-  Model3D.js      модели: бинарный FBX -> меши Babylon (load с кэшем, build, dispose); 1 см = 1 px; .glb уходит в Gltf3D
+  Model3D.js      модели: бинарный FBX -> pc.Mesh (load с кэшем, build, dispose); 1 см = 1 px; .glb уходит в Gltf3D
   Gltf3D.js       модели glTF/GLB: скелет, текстуры, PBR -> StandardMaterial под toon; Clips3D — клипы анимации
                   (Model3D.clips(root).play('run') с плавным переходом)
   Location3D.js   локация: View3D + Terrain3D + текстура земли (LOCATION_GROUND) + объекты (addObject/placeObject,
@@ -105,14 +106,14 @@ js/               код игры — классические скрипты:
                   якоря 9 точек, масштаб по UI_REF_HEIGHT
   Game.js         пример игры: место игровой логики (кнопка Run — клипы idle/run персонажа, шкала энергии)
   main.js         вход: World3D.init -> Location3D(LOCATION_OBJECTS) -> камера -> UI -> Game -> цикл кадров; window.app
-libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js (glTF-загрузчик той же версии), simplex-noise.js;
-                  *.d.ts — их типы для tsc
+libs/             playcanvas.min.js (2.x UMD, глобал pc; контейнерный загрузчик glTF встроен), simplex-noise.js;
+                  playcanvas.d.ts — типы движка для tsc
 assets/           ground_texture_{g,d,s}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
                   (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs)
 tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты), make-character.mjs
 tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
 tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, связка
-                  скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
+                  скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка pc
 _utils/editor/    редактор (в билд не едет): server.mjs (HTTP), save.mjs (запись Constants.js,
                   Objects.js и UILayout.js), index.html, i18n.js (EN/RU), schema.js, inspector.js (Global Settings),
                   objects-panel.js (Objects: список, свойства, гизмо, импорт), ui-panel.js (UI: элементы
@@ -128,11 +129,13 @@ claude/           для Claude Code, едет пользователям (в б
 1. Логика — в `js/Game.js` (пример в наборе: `constructor(app)` и `update(dt)`, зовётся из цикла
    `main.js` до рендера); большая игра — новые файлы: `<script>` до `main.js` + строка в `CODE_FILES`.
 2. Статичные объекты локации — вкладка Objects редактора (`Objects.js`), в коде —
-   `app.location.objects` (`{ def, mesh }`). Свои объекты: `BABYLON.MeshBuilder`/меши или
-   `Model3D.load` + `Model3D.build` в `app.location.view.scene` -> `World3D.addObject` ->
-   позиция на `app.location.terrain.heightAt(x, y)`.
+   `app.location.objects` (`{ def, mesh }` — mesh это корневая СУЩНОСТЬ модели). Свои объекты:
+   `pc.Mesh` из вершин или `Model3D.load` + `Model3D.build` в `app.location.view` ->
+   `World3D.addObject` -> позиция на `app.location.terrain.heightAt(x, y)` (в зеркальном
+   мире: `setPosition(-x, h, y)`).
 3. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
-   сам (скилл `world3d`). Камера за героем — `app.camera.follow(obj)` (объект с полями `x`, `y`).
+   сам (скилл `world3d`). Поворот сущности — `World3D.rotQuat` / `eulerFromQuat`. Камера за героем —
+   `app.camera.follow(obj)` (объект с полями `x`, `y`).
 4. Интерфейс — записи в `UILayout.js` (вкладка UI редактора) + `UI.get(id)` в коде (скилл `ui`,
    инвариант 11). Новые числа — в `Constants.js` и `_utils/editor/schema.js`.
 

@@ -549,7 +549,7 @@ class CameraController {
             this._shakeAmp = 0;
         }
         this.cam.position.set(px + sx, py + sh, pz + sy);
-        this.cam.setTarget(new BABYLON.Vector3(this.target.x + sx, this.target.h + sh, this.target.y + sy));
+        this.cam.setTarget({ x: this.target.x + sx, y: this.target.h + sh, z: this.target.y + sy });
     }
 
     _apply() {
