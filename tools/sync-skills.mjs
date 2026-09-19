@@ -152,7 +152,12 @@ expected.set('agent-manifest.json', JSON.stringify({
         sceneManifest: 'node tools/manifest.mjs --check',
         render: 'node tools/headless-gate.mjs --render',
         visual: 'node tools/headless-gate.mjs --visual',
-        serve: { game: 'node tools/dev-server.mjs', editor: 'node _utils/editor/server.mjs' }
+        serve: { game: 'node tools/dev-server.mjs', editor: 'node _utils/editor/server.mjs' },
+        cli: {
+            anyOs: 'node tools/arc.mjs <run|editor|check|build|gate|sync|manifest|scaffold>',
+            windows: 'run.bat / editor.bat / check.bat / build.bat (thin wrappers)',
+            unix: './run.sh / ./editor.sh / ./check.sh / ./build.sh (thin wrappers)'
+        }
     },
     determinism: {
         agentPrng: 'Scene.seed(n) + Scene.random(); starters use Scene.random, never Math.random',

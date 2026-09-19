@@ -1,14 +1,12 @@
 @echo off
 rem ==========================================================================
-rem  ArcEngine - code check: types (tsc via npx) and unit tests (node --test)
-rem
-rem    check.bat            -> types and tests
-rem    check.bat --types    -> types only
-rem    check.bat --tests    -> tests only
+rem  ArcEngine - code check (thin wrapper over the cross-platform CLI)
+rem    check.bat            -> fast profile: types, tests, skills sync, manifest
+rem    check.bat --all      -> release gate (+ headless render/visual)
+rem  Any OS: node tools/arc.mjs check
 rem ==========================================================================
 setlocal
 cd /d "%~dp0"
-
 where node >nul 2>nul
 if errorlevel 1 (
     echo.
@@ -17,8 +15,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-
-node tools\check.mjs %*
+node tools\arc.mjs check %*
 set "RC=%ERRORLEVEL%"
 echo.
 pause

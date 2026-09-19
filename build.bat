@@ -1,15 +1,13 @@
 @echo off
 rem ==========================================================================
-rem  ArcEngine - build a game archive
-rem
+rem  ArcEngine - build a game archive (thin wrapper over the cross-platform CLI)
 rem    build.bat                -> dist\arcengine-<GAME_VERSION>.zip
 rem    build.bat --version=0.2.0  -> stamp a new version into the build
 rem    build.bat --no-zip         -> only produce the build\ folder
-rem    build.bat --force          -> build even if checks fail
+rem  Any OS: node tools/arc.mjs build
 rem ==========================================================================
 setlocal
 cd /d "%~dp0"
-
 where node >nul 2>nul
 if errorlevel 1 (
     echo.
@@ -18,8 +16,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-
-node tools\build.mjs %*
+node tools\arc.mjs build %*
 set "RC=%ERRORLEVEL%"
 echo.
 pause

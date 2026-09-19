@@ -29,14 +29,21 @@ index.html  ->  js/ (kit)  ->  PlayCanvas 2 (libs/, local)  ->  WebGL2
 
 ## Quick start
 
+One cross-platform CLI (any OS, zero npm):
+
 ```
-node tools/dev-server.mjs        # game at http://localhost:8080 (or next free port)
-node _utils/editor/server.mjs    # editor at http://localhost:8090/_utils/editor/
-node tools/check.mjs             # types + tests + skills sync
-node tools/build.mjs             # dist/arcengine-<version>.zip (playable without the repo)
+node tools/arc.mjs run        # game at http://localhost:8080 (or next free port)
+node tools/arc.mjs editor     # editor at http://localhost:8090/_utils/editor/
+node tools/arc.mjs check      # fast profile: types + tests + skills sync + manifest
+node tools/arc.mjs check --all   # release gate (+ headless render/visual)
+node tools/arc.mjs build      # dist/arcengine-<version>.zip (playable without the repo)
+node tools/arc.mjs scaffold my-game --starter survival
 ```
 
-Windows users: `run.bat`, `editor.bat`, `check.bat`, `build.bat` wrap the same tools.
+Thin wrappers, same commands: Windows `run.bat` / `editor.bat` / `check.bat` / `build.bat`,
+macOS/Linux `./run.sh` / `./editor.sh` / `./check.sh` / `./build.sh`. Servers pick a free
+port, print the URL and open the browser themselves (win32 `start`, darwin `open`,
+linux `xdg-open`).
 Requires Node.js (any modern LTS); the game itself needs none of it.
 
 ## Making a game
