@@ -48,6 +48,7 @@ function startGame() {
         const now = performance.now(), dt = (now - last) / 1000;
         last = now;
         game.update(Math.min(0.1, dt));
+        if (typeof Kit !== 'undefined') Kit._run(Math.min(0.1, dt));
         location.update(dt);
         camera.update(dt);
         World3D.renderFrame();

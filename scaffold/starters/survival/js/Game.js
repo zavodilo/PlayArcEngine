@@ -24,12 +24,12 @@ class Game {
         if (this.timer <= 0 && this.spawnLeft > 0) {
             this.timer = 1.2;
             this.spawnLeft--;
-            const a = Math.random() * Math.PI * 2, r = 500 + Math.random() * 200;
+            const a = Scene.random() * Math.PI * 2, r = 500 + Scene.random() * 200;
             Scene.spawn('assets/models/mill.fbx', {
                 kind: 'prop',
                 x: Math.max(64, Math.min(1984, hero.x + Math.cos(a) * r)),
                 y: Math.max(64, Math.min(1984, hero.y + Math.sin(a) * r)),
-                heading: Math.random() * 360,
+                heading: Scene.random() * 360,
                 scale: [0.5, 0.5, 0.5]
             });
         }

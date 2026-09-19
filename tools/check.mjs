@@ -1,7 +1,8 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and tests (node --test)
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types, tests and skills sync
+//  node tools/check.mjs            fast: types, tests, skills sync, scene manifest
+//  node tools/check.mjs --all      RELEASE GATE: + headless render + visual smoke (puppeteer)
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --tests    tests only
 //  node tools/check.mjs --skills   skills sync only
@@ -30,9 +31,15 @@ const STEPS = [
   { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit', shell: true }) },
   { flag: '--skills', title: 'синхронность скиллов', run: () => spawnSync(process.execPath, ['tools/sync-skills.mjs', '--check'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--skills', title: 'манифест сцены', run: () => spawnSync(process.execPath, ['tools/manifest.mjs', '--check'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--render', title: 'headless render gate', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--render'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--visual', title: 'headless visual smoke', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--visual'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
+// --all: the release gate — every step above (render/visual need puppeteer, dev-only).
+const ALL = process.argv.includes('--all');
 
-const only = ['--types', '--tests'].filter(f => process.argv.includes(f));
+const DEFAULT_STEPS = ['--types', '--tests', '--skills'];
+const KNOWN = ['--types', '--tests', '--skills', '--render', '--visual'];
+const only = ALL ? KNOWN : (process.argv.some(f => KNOWN.includes(f)) ? KNOWN.filter(f => process.argv.includes(f)) : DEFAULT_STEPS);
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {

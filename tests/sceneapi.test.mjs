@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { loadScripts, stub } from './browser-scripts.mjs';
 
 function makeScene() {
-    const page = loadScripts(['js/Constants.js', 'js/SceneSchema.js', 'js/SceneAPI.js'],
+    const page = loadScripts(['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/SceneSchema.js', 'js/SceneAPI.js'],
         { pc: stub(), World3D: stub(), Debug3D: { lint: async () => ({ findings: [], stats: { triangles: 0 } }) } });
     const loc = {
         objects: [],
@@ -20,7 +20,12 @@ function makeScene() {
     };
     page.ctx.app = { location: loc, camera: { follow() {} } };
     page.ctx.World3D = { view: {}, fps: () => 60 };
-    return { Scene: page.get('Scene'), loc };
+    const cache = new Map();
+    page.ctx.Model3D = {
+        load: (p) => { if (!cache.has(p)) cache.set(p, Promise.resolve({})); return cache.get(p); },
+        _cache: cache
+    };
+    return { Scene: page.get('Scene'), Kit: page.get('Kit'), Asset: page.get('Asset'), UI: page.get('UI'), Edit: page.get('Edit'), loc };
 }
 
 test('манифест доступен агенту: константы с диапазонами, поля объекта, API', () => {
@@ -88,4 +93,103 @@ test('inspect: итоги сцены и findings линта без кадра', 
     assert.deepEqual(r.errors, []);
     assert.deepEqual(r.findings, []);
     assert.equal(r.fps, 60);
+});
+
+test('Edit: транзакция коммитится атомарно, журнал пишется', () => {
+    const { Scene, Edit } = makeScene();
+    Scene.spawn('assets/models/mill.fbx', { name: 'mill' });
+    const tx = Edit.begin('squad');
+    tx.add('assets/models/mill.fbx', { name: 'a', x: 10, y: 10 })
+      .add('assets/models/mill.fbx', { name: 'b', x: 20, y: 20 })
+      .update('mill', { x: 500 });
+    assert.equal(tx.ops().ops.map(o => o.op).join(','), 'add,add,update');   // cross-realm arrays: compare by value
+    const r = tx.commit();
+    assert.equal(r.applied.length, 3);
+    assert.equal(Scene.query().length, 3);
+    assert.equal(Scene.query({ name: 'mill' })[0].x, 500);
+    const j = Scene.journal();
+    assert.equal(j[0].status, 'committed');
+    assert.equal(j[0].label, 'squad');
+});
+
+test('Edit: reject на валидации и rollback применения пишутся в журнал, сцена цела', () => {
+    const { Scene, Edit } = makeScene();
+    Scene.spawn('assets/models/mill.fbx', { name: 'mill', x: 100, y: 100 });
+    // 1) validate catches the duplicate before anything is applied
+    const tx = Edit.begin('bad');
+    tx.add('assets/models/mill.fbx', { name: 'ok1' })
+      .add('assets/models/mill.fbx', { name: 'ok1' });
+    assert.throws(() => tx.commit(), /duplicate name/);
+    assert.equal(JSON.stringify(Scene.query().map(s => [s.name, s.x])), '[["mill",100]]', 'сцена не тронута');
+    assert.equal(Scene.journal().at(-1).status, 'rejected');
+    // 2) a failure during APPLY rolls the snapshot back
+    const tx2 = Edit.begin('apply-fail');
+    tx2.add('assets/models/mill.fbx', { name: 'ghost' }).update('mill', { x: 777 });
+    const loc = Scene._location();
+    const realPlace = loc.placeObject.bind(loc);
+    let blew = false;
+    loc.placeObject = (rec) => {   // blow up ONCE, on the apply of the update (not on rollback)
+        if (!blew && rec.def.name === 'mill') { blew = true; throw new Error('boom'); }
+        realPlace(rec);
+    };
+    assert.throws(() => tx2.commit(), /boom/);
+    loc.placeObject = realPlace;
+    assert.equal(JSON.stringify(Scene.query().map(s => s.name).sort()), '["mill"]', 'ghost удалён откатом');
+    assert.equal(Scene.query({ name: 'mill' })[0].x, 100, 'def mill восстановлен');
+    assert.equal(Scene.journal().at(-1).status, 'rolledback');
+});
+
+test('Edit: rollback сброшенной транзакции пишется как discarded', () => {
+    const { Scene, Edit } = makeScene();
+    const tx = Edit.begin('drop');
+    tx.add('assets/models/mill.fbx', { name: 'x' });
+    tx.rollback();
+    assert.equal(Scene.query().length, 0);
+    assert.equal(Scene.journal().at(-1).status, 'discarded');
+});
+
+test('Kit: state, frame-хуки и часы; UI.query/patch валидируются по схеме', () => {
+    const { Scene, Kit, UI } = makeScene();
+    Kit.state('score', 10);
+    assert.equal(Kit.state('score'), 10);
+    assert.equal(Kit.state('missing'), undefined);
+    let seen = 0;
+    Kit.onFrame('ai', (dt) => { seen += dt; });
+    Kit._run(0.5);
+    assert.equal(seen, 0.5);
+    assert.equal(Kit.dt(), 0.5);
+    Kit.offFrame('ai');
+    Kit._run(0.5);
+    assert.equal(seen, 0.5, 'хук снят');
+    // UI: layout из UILayout.js канона
+    UI.applyLayout([{ id: 'hp', kind: 'bar', anchor: 'top-left', x: 10, y: 10, w: 100, h: 10, value: 0.5, color: '#5ad05a', fill: '#10202c', border: '', radius: 5, alpha: 1, visible: 1 }]);
+    assert.equal(UI.query().length, 1);
+    const patched = UI.patch('hp', { value: 0.25, w: 120 });
+    assert.equal(patched.value, 0.25);
+    assert.throws(() => UI.patch('hp', { value: 'half' }), /finite number/);
+    assert.throws(() => UI.patch('hp', { kind: 'text' }), /immutable/);
+    assert.throws(() => UI.patch('nope', { value: 1 }), /no element/);
+    assert.ok(Scene.query, 'Scene на месте');
+});
+
+test('Asset: list/loaded/preload без pc.*', async () => {
+    const { Scene, Asset } = makeScene();
+    Scene.spawn('assets/models/mill.fbx', { name: 'mill' });
+    const list = Asset.list();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].path, 'assets/models/mill.fbx');
+    assert.equal(await Asset.preload('assets/models/character.glb'), true);
+    assert.equal(Asset.loaded('assets/models/character.glb'), true);
+    assert.equal(Asset.loaded('assets/models/nope.fbx'), false);
+});
+
+test('Scene.seed: последовательность Scene.random воспроизводима', () => {
+    const { Scene } = makeScene();
+    Scene.seed(7);
+    const a = [Scene.random(), Scene.random(), Scene.random()];
+    Scene.seed(7);
+    const b = [Scene.random(), Scene.random(), Scene.random()];
+    assert.deepEqual(a, b);
+    Scene.seed(8);
+    assert.notDeepEqual(a, [Scene.random(), Scene.random(), Scene.random()]);
 });

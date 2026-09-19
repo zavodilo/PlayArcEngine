@@ -271,6 +271,18 @@ Scene.manifest();                                     // SCENE_SCHEMA
   def in place and calls `placeObject`. Nothing here bypasses `World3D.addObject`.
 - `inspect()` is the agent's verification loop: objects/loaded/errors/triangles/fps plus
   the lint findings; pair it with a headless screenshot for the look (skill `verify`).
+- Composite edits are transactions: `Edit.begin(label).add(model, opts).update(name, patch)
+  .remove(name).commit()` — every op is validated BEFORE anything is applied; an apply
+  failure rolls the snapshot back and rethrows, the outcome lands in `Scene.journal()`
+  (committed / rolledback / rejected / discarded). `tx.rollback()` drops a pending tx.
+- Determinism: `Scene.seed(n)` fixes `Scene.random()` (starters use only it, never
+  `Math.random` — the apigate test enforces); terrain noise comes from the
+  `TERRAIN_NOISE_SEED` constant and is independent of the seed.
+- Game-loop/state/UI/assets without `pc.*`: `Kit.state(key, value?)`, `Kit.onFrame(name, fn)`
+  / `offFrame`, `Kit.time()/dt()/fps()`; `UI.query()`, `UI.patch(id, patch)` (schema-validated,
+  `id`/`kind` immutable), `UI.add/remove/get`; `Asset.preload(path)`, `Asset.list()`,
+  `Asset.loaded(path)`. The name `Game.*` is deliberately free: every scaffolded game
+  defines its own `class Game`.
 
 ## Constants
 
