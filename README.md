@@ -1,0 +1,63 @@
+# ArcEngine
+
+A zero-dependency kit for 3D browser games on **PlayCanvas 2**, built for AI-assisted
+development: vanilla JS, classic `<script>` tags, no npm, no build step — and a first-class
+agent layer (skills, `AGENTS.md`, semantic API on the roadmap).
+
+```
+index.html  ->  js/ (kit)  ->  PlayCanvas 2 (libs/, local)  ->  WebGL2
+   ^                         ^
+   editor (_utils/)          agent skills (claude/skills, .agents/skills, AGENTS.md)
+```
+
+## What you get
+
+- **A runnable game base**: hilly terrain, sun with colored toon shadows, light bands,
+  ink edges and silhouette outlines, FBX and GLB models (skeleton + animation clips),
+  a camera with flight/orbit/zoom, a DOM HUD laid out by data.
+- **A web editor** (`_utils/editor/`): free/game cameras, Global Settings (every render and
+  camera constant), Objects (import FBX/GLB, gizmos, part spin, clips), UI layout tab —
+  the editor writes code files (`Constants.js`, `Objects.js`, `UILayout.js`), not binaries.
+- **An agent layer**: kit skills in `claude/skills/` (world3d, ui, editor, build, verify,
+  render-conventions), vendored PlayCanvas engine skills (`claude/vendor/playcanvas/`,
+  MIT), generated native discovery for Claude Code (`.claude/skills/`), Codex/Cursor and
+  Agent-Skills-compatible tools (`.agents/skills/`, `AGENTS.md`), Cursor rule
+  (`.cursor/rules/arcengine.mdc`). `CLAUDE.md` remains the human-and-agent map.
+- **Honest verification**: `node tools/check.mjs` (JSDoc types via tsc, 50+ logic tests,
+  skills-sync check), `Debug3D.lint()` in the running scene, headless render harness in
+  the project workflow.
+
+## Quick start
+
+```
+node tools/dev-server.mjs        # game at http://localhost:8080 (or next free port)
+node _utils/editor/server.mjs    # editor at http://localhost:8090/_utils/editor/
+node tools/check.mjs             # types + tests + skills sync
+node tools/build.mjs             # dist/arcengine-<version>.zip (playable without the repo)
+```
+
+Windows users: `run.bat`, `editor.bat`, `check.bat`, `build.bat` wrap the same tools.
+Requires Node.js (any modern LTS); the game itself needs none of it.
+
+## Making a game
+
+1. Logic lives in `js/Game.js` (`constructor(app)`, `update(dt)`); bigger games add files
+   as `<script>` before `main.js` (+ a line in `CODE_FILES`, `tools/asset-scan.mjs`).
+2. Static props — editor Objects tab (`Objects.js`); in code — `app.location.objects`,
+   `Model3D.load/build` + `World3D.addObject`, ground height via `terrain.heightAt(x, y)`.
+3. Animated characters — `.glb` + `Model3D.clips(root).play('run')` (cross-fade built in).
+4. HUD — records in `UILayout.js` (editor UI tab) + `UI.get(id).setText/setValue/show/onClick`.
+
+## AI-native workflow
+
+Agents start from `AGENTS.md` (or `CLAUDE.md`): read the skill for the area you touch,
+keep the invariants (zero deps, constants in `Constants.js`, 3D is a view, HUD via layout),
+verify with `check.mjs` and `Debug3D.lint()`. Skills ship in three flavors from one canon:
+hand-edit `claude/skills/` or `claude/vendor/`, then `node tools/sync-skills.mjs`.
+
+Roadmap (semantic scene API, machine-readable manifest, `create-arcengine` scaffold):
+`ROADMAP.md`.
+
+## License
+
+MIT — see `LICENSE`. Bundled third-party components and attribution: `NOTICE`.
