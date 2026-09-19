@@ -62,3 +62,14 @@ test('.claude/skills и .agents/skills — генерированные копи
     const agents = read('AGENTS.md');
     for (const rel of SKILLS) assert.ok(agents.includes('`' + rel.split('/')[2] + '`'), 'AGENTS.md не упоминает ' + rel);
 });
+
+test('agent-manifest.json:_machine contract matches the canon (skills, entry points, checks)', () => {
+    const m = JSON.parse(read('agent-manifest.json'));
+    for (const rel of SKILLS) {
+        assert.ok(m.skills.kit.some(s => s.name === rel.split('/')[2]), 'manifest не содержит ' + rel);
+    }
+    assert.ok(m.skills.vendor.names.length >= 10, 'вендорные скиллы в манифесте');
+    assert.ok(m.entryPoints.agents.includes('AGENTS.md'));
+    assert.match(m.checks.release, /--all/);
+    assert.ok(typeof m.api.scene.length === 'number' && m.api.scene.length > 5);
+});
