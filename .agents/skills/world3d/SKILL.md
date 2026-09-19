@@ -251,6 +251,27 @@ objects there.
 - Camera math goes through `_eye()` (position from target/azimuth/pitch/zoom), not through
   the facade position: the facade also carries shake and the ground floor.
 
+## Semantic Scene API (agents and game code)
+
+```js
+Scene.spawn('assets/models/mill.fbx', { kind: 'prop', x: 800, y: 900, heading: 30 });
+Scene.move('mill-2', { x: 820, clip: 'idle' });      // patch the def, re-place
+Scene.query({ kind: 'actor' });                       // plain JSON snapshots
+await Scene.inspect();                                // totals + Debug3D.lint, silent
+Scene.follow('hero');                                 // camera on the object
+Scene.manifest();                                     // SCENE_SCHEMA
+```
+
+- `js/SceneAPI.js` + generated `js/SceneSchema.js` (`tools/manifest.mjs`): every call is
+  validated against the manifest (constants with editor ranges, record fields) and fails
+  with a readable `Error` BEFORE anything reaches the frame — an agent can self-correct
+  from the message alone.
+- Records are the canon `Location3D.objects` defs (the same objects the editor edits):
+  `spawn` goes through `Location3D.addObject` (group/ink/outline applied), `move` edits the
+  def in place and calls `placeObject`. Nothing here bypasses `World3D.addObject`.
+- `inspect()` is the agent's verification loop: objects/loaded/errors/triangles/fps plus
+  the lint findings; pair it with a headless screenshot for the look (skill `verify`).
+
 ## Constants
 
 Groups in `Constants.js`: `LOCATION_*`/`GROUND_TILE_SIZE`/`TERRAIN_*` (location),
