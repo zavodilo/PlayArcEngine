@@ -1,115 +1,78 @@
 # ArcEngine — roadmap публичного AI-native набора
+Цель: публичный MIT-проект — набор для 3D-игр в браузере, в котором ИИ-агенты (Claude Code, Codex, Cursor и любые, читающие стандартные точки входа) являются первоклассными пользователями: находят скиллы без инструкций, правят сцену через семантический API и проверяют себя headless-рендером.
 
-Цель: публичный MIT-проект — набор для 3D-игр в браузере, в котором ИИ-агенты
-(Claude Code, Codex, Cursor и любые, читающие стандартные точки входа) являются
-первоклассными пользователями: находят скиллы без инструкций, правят сцену через
-семантический API и проверяют себя headless-рендером.
-
-```
-ArcEngine (MIT)
-├── AI-native semantic API      (фаза B)
+`ArcEngine (MIT)
+├── AI-native semantic API + edit transactions (фаза B)
+├── deterministic headless + visual verification (фаза B)
 ├── agent skills: свои + движковые  (фаза A)
-├── CLAUDE.md / AGENTS.md / rules   (фаза A)
+├── CLAUDE.md / AGENTS.md / agent-manifest.json (фаза A)
 ├── свой editor                   (есть)
 ├── свой scene format             (есть)
 ├── свой zero-npm build           (есть)
 └── PlayCanvas Engine 2 (MIT)
     └── движковые скиллы @playcanvas/skills (MIT, вендор)
-```
+`
 
-## Текущее состояние (после PR #1)
-
-- Движок полностью перенесён с Babylon.js 9.26 на **PlayCanvas 2.22** (`libs/playcanvas.min.js`,
-  UMD, WebGL2): toon-чанки `StandardMaterial` (цветные тени, полосы, rim), чернильные рёбра,
-  inverted-hull контур, слои WORLD/OVERLAY/ACTOR, тени directional light.
-- Координатное соглашение: мир движка — зеркало карты по X (левосторонний PlayCanvas против
-  правосторонней карты); игровая математика осталась в координатах карты (скилл `world3d`).
-- Редактор, тесты (53), типы (tsc по JSDoc), zero-npm сборка — зелёные; игра и редактор
-  отрисованы headless без ошибок консоли.
-- Скиллы набора: `claude/skills/*/SKILL.md` (английские), точка входа — `CLAUDE.md`
-  (инвариант 9: агенты читают их через Read, нативного обнаружения пока нет).
+## Текущее состояние (после PR #1–#5, main)
+  * Движок перенесён с Babylon.js 9.26 на PlayCanvas 2.22 (`libs/playcanvas.min.js`, UMD, WebGL2): toon-чанки `StandardMaterial` (цветные тени, полосы, rim), чернильные рёбра, inverted-hull контур, слои WORLD/OVERLAY/ACTOR, тени directional light.
+  * Координатное соглашение: мир движка — зеркало карты по X (левосторонний PlayCanvas против правосторонней карты); игровая математика осталась в координатах карты (скилл `world3d`).
+  * Фаза A (база, PR #3): sync-skills и точки входа агентов (`.claude/skills/`, `.agents/skills/`, `.cursor/rules/`, `AGENTS.md`), вендор `@playcanvas/skills` **v0.3.0**, NOTICE/README.
+  * Фаза B (база, PR #4): `Scene.spawn/move/remove/query/inspect/follow/manifest` + `js/SceneSchema.js` (GENERATED), контрактные тесты, headless-сессия агента.
+  * Фаза C (база, PR #5): `create-arcengine` (стартеры kit/empty/survival, npm bin, zero deps).
+  * Ниже — ДЕЛЬТА к базе: фаза A+ (`agent-manifest.json`), фаза B+ (транзакции `Edit.*`, `Kit.*`/`UI.*`/`Asset.*`, `Scene.seed`, профили check `--render/--visual/--all`, visual gate).
 
 ## Лицензии и атрибуция
-
-| Компонент | Лицензия | Использование |
-|---|---|---|
-| ArcEngine (этот репозиторий) | MIT (`LICENSE`) | основа |
-| PlayCanvas Engine 2 | MIT | `libs/playcanvas.min.js`, бинарно в репозитории |
-| create-playcanvas | MIT | образец упаковки скиллов и скаффолда (фаза A/C), код не копируется |
-| @playcanvas/skills | MIT | вендор engine-скиллов (фаза A), версия пинится |
-
-Вендоренные части сохраняют свои LICENSE-файлы рядом (`libs/PLAYCANVAS_LICENSE`,
-`claude/skills/vendor/playcanvas/LICENSE`); упоминания — в NOTICE (фаза A).
-Ничего GPL/proprietary в цепочке нет; публичная публикация набора совместима со всеми
-тремя лицензиями при сохранении copyright-строк и текста лицензий.
+Компонент  | Лицензия  | Использование
+--- | --- | ---
+ArcEngine (этот репозиторий)  | MIT (`LICENSE`)  | основа
+PlayCanvas Engine 2  | MIT  | `libs/playcanvas.min.js`, бинарно в репозитории
+create-playcanvas  | MIT  | образец упаковки скиллов и скаффолда (фаза A/C), код не копируется
+@playcanvas/skills  | MIT  | вендор engine-скиллов (фаза A), версия пинится
+Вендоренные части сохраняют свои LICENSE-файлы рядом (`libs/PLAYCANVAS_LICENSE`, `claude/skills/vendor/playcanvas/LICENSE`); упоминания — в NOTICE (фаза A). Ничего GPL/proprietary в цепочке нет; публичная публикация набора совместима со всеми тремя лицензиями при сохранении copyright-строк и текста лицензий.
 
 ## Фаза A — мульти-агентная упаковка скиллов
+Перед упаковкой скиллов фиксируется машинный контракт агента: `agent-manifest.json` содержит версию API, карту скиллов, точки входа и команды проверки. `CLAUDE.md` остаётся человекочитаемой картой, а `agent-manifest.json` — источником машиночитаемых возможностей.
+Канон скиллов остаётся в `claude/skills/` (имена без точки: веб-загрузка GitHub не пропускает dot-папки). Появляется генерация копий для агентов:
+  * `tools/sync-skills.mjs`: из канона + вендора собирает `.claude/skills/` (Claude Code, нативный Skill-tool), `.agents/skills/` (Codex, Cursor, прочие по emerging-конвенции create-playcanvas), `.cursor/rules/arcengine.mdc`, корневой `AGENTS.md` (кросс-агентная точка входа: инварианты, проверки, карта скиллов).
+  * Вендор `@playcanvas/skills` v0.3.0 (MIT, уже в main) — engine-слой дополняет скиллы набора (графика, эффекты, соглашения движка); свои скиллы приоритетнее при коллизиях имён.
+  * `tools/check.mjs`: шаг «копии синхронны канону» (по образцу CI create-playcanvas); правка канона без regen — провал проверки.
+  * Инвариант 9 уточняется: «Skill-инструмент теперь видит скиллы; CLAUDE.md остаётся картой для человека и агентов без нативной поддержки скиллов».
+  * NOTICE + раздел «AI-native» в README/CLAUDE.md.
+Критерий готовности: `node tools/check.mjs --all` зелёный; Claude Code обнаруживает скилл через Skill-tool; Codex-совместимый агент находит `AGENTS.md` и `.agents/skills`; headless-рендер игры и редактора без ошибок; `agent-manifest.json` соответствует канону скиллов и API.
 
-Канон скиллов остаётся в `claude/skills/` (имена без точки: веб-загрузка GitHub не
-пропускает dot-папки). Появляется генерация копий для агентов:
-
-- `tools/sync-skills.mjs`: из канона + вендора собирает
-  `.claude/skills/` (Claude Code, нативный Skill-tool), `.agents/skills/` (Codex, Cursor,
-  прочие по emerging-конвенции create-playcanvas), `.cursor/rules/arcengine.mdc`,
-  корневой `AGENTS.md` (кросс-агентная точка входа: инварианты, проверки, карта скиллов).
-- Вендор `@playcanvas/skills` v0.2.0 (MIT) — engine-слой дополняет скиллы набора
-  (графика, эффекты, соглашения движка); свои скиллы приоритетнее при коллизиях имён.
-- `tools/check.mjs`: шаг «копии синхронны канону» (по образцу CI create-playcanvas);
-  правка канона без regen — провал проверки.
-- Инвариант 9 уточняется: «Skill-инструмент теперь видит скиллы; CLAUDE.md остаётся
-  картой для человека и агентов без нативной поддержки скиллов».
-- NOTICE + раздел «AI-native» в README/CLAUDE.md.
-
-Критерий готовности: `node tools/check.mjs` зелёный; Claude Code обнаруживает скилл через
-Skill-tool; Codex-совместимый агент находит `AGENTS.md` и `.agents/skills`; headless-рендер
-игры и редактора без ошибок.
-
-## Фаза B — семантический AI-API и манифест сцены
-
-Агент не должен знать `pc.*`: поверх кита появляется тонкий декларативный слой
-(`js/AgentAPI.js` или подобное):
-
-- `Scene.spawn(kind, { position, heading, scale, clip })`, `Scene.move/remove/query`,
-  `Scene.inspect()` — диагностика (обёртки Debug3D.lint/bench + состояние объектов);
-  вызовы идемпотентны и сериализуемы в журнал правок.
-- Машинно-читаемый манифест сцены: JSON-схема поверх `Objects.js`/`UILayout.js`/
-  `Constants.js` (имена, типы, диапазоны из `_utils/editor/schema.js`), чтобы агент валидировал
-  правки до рендера; редактор и игра читают тот же канон.
-- Контрактные тесты: каждый метод API имеет тест в `tests/` без 3D (стабы) + один
-  headless-сценарий «агент правит сцену → рендер → lint чистый».
-
-Критерий готовности: пример сессии агента (spawn 10 врагов, поставить клип, прогнать lint)
-проходит headless без правок `js/` вручную.
+## Фаза B — семантический AI-API, манифест сцены и проверяемый агентский цикл
+Агент не должен знать `pc.*`: поверх кита появляется тонкий декларативный слой (`js/AgentAPI.js` или подобное):
+  * `Scene.spawn(model, opts)` (контракт из main: model — литерал `assets/…`, opts — kind/x/y/h/heading/rot/scale/clip), `Scene.move/remove/query`, `Scene.inspect()` — диагностика (обёртки Debug3D.lint/bench + состояние объектов). `Scene.inspect()` поддерживает фильтры по id/kind/области и возвращает состояние, предупреждения и ошибки.
+  * Операции сцены и игры идемпотентны и сериализуемы в журнал правок. Для составных AI-правок появляется `Edit.begin/add/update/remove/commit/rollback`, чтобы частично применённая правка никогда не оставляла сцену в неопределённом состоянии.
+  * Помимо `Scene.*` появляется минимальный generic API игрового цикла, UI и ассетов без обращения к `pc.*`: `Kit.*` (state, frame-хуки, time/dt/fps — имя `Game.*` сознательно не используется: каждая скаффолднутая игра определяет собственный `class Game` в `js/Game.js`, глобальный `Game` столкнулся бы с ней), `UI.query/patch/add/remove/get` (расширение канонического `UI`), `Asset.preload/list/loaded`.
+  * Машинно-читаемый манифест сцены: JSON-схема поверх `Objects.js`/`UILayout.js`/`Constants.js` (имена, типы, диапазоны из `_utils/editor/schema.js`), чтобы агент валидировал правки до рендера; редактор и игра читают тот же канон.
+  * Детерминированность: `Scene.seed(n)` задаёт PRNG агентских операций (`Scene.random()`); стартеры пользуют только его, не `Math.random`. Рельеф сеется константой `TERRAIN_NOISE_SEED` (правится редактором) и от `Scene.seed` не зависит — visual-тесты фиксируют viewport 1280x720 и seed сценария.
+  * Проверка строится в несколько уровней: unit/contract tests без 3D + headless-сценарий «агент правит сцену → запуск → console/errors → Debug3D.lint» + screenshot/visual smoke checks для камеры, видимости и критичных UI.
+  * `tools/check.mjs` получает профили `--types`, `--tests`, `--skills`, `--render`, `--visual`, `--all`; базовый `check` остаётся быстрым, а `--all` является обязательным релизным gate. `--render`/`--visual` вызывают `tools/headless-gate.mjs`, которому нужен puppeteer: это dev-only зависимость окружения проверки (node_modules/NODE_PATH), а не рантайма набора; без неё gate возвращает код 2 с инструкцией, и `--all` в релизном окружении обязан упасть.
+Критерий готовности: пример сессии агента (spawn 10 врагов, поставить клип, изменить UI, прогнать lint и visual smoke) проходит headless без ручных правок `js/`; в случае ошибки составная правка откатывается.
 
 ## Фаза C — публичный скаффолд `create-arcengine`
-
-- CLI по образцу create-playcanvas, но без Vite/npm в рантайме набора: копия набора +
-  скиллы + стартеры (пустая сцена, top-down survival-заготовка из примера Game.js);
-  флаги `--no-skills`, `--starter`.
-- Рантайм-инвариант не меняется: ноль npm-зависимостей, классические `<script>`,
-  `libs/playcanvas.min.js` локально; npm допустим только в инструментарии скаффолда.
-- Релиз-канал: zip-архив сборки (есть) + npm-пакет скаффолда (опционально).
+  * CLI по образцу create-playcanvas, но без Vite/npm в рантайме набора: копия набора + скиллы + стартеры (пустая сцена, top-down survival-заготовка из примера Game.js); флаги `--no-skills`, `--starter`.
+  * Рантайм-инвариант не меняется: ноль runtime npm-зависимостей, классические `<script>`, `libs/playcanvas.min.js` локально; npm допустим только в инструментарии скаффолда. Инструментарий может использовать npm cache/`npx`, если это явно задокументировано.
+  * Релиз-канал: zip-архив сборки (есть) + npm-пакет скаффолда (опционально).
 
 ## Не-цели (осознанные отказы)
-
-- Не переезжаем на Vite/TypeScript-шаблоны create-playcanvas: ниша набора — vanilla JS без
-  сборки; TS остаётся проверкой по JSDoc.
-- Не поддерживаем WebGL1: PlayCanvas 2 — WebGL2-only.
-- Не форкаем движок: только вендоринг релизных файлов (`libs/`), апгрейд = новая пара файлов
-  + прогон check/рендера.
-- Не дублируем редактор PlayCanvas Editor: свой редактор — часть ДНК набора (пишет код-файлы,
-  а не бинарные сцены).
+  * Не переезжаем на Vite/TypeScript-шаблоны create-playcanvas: ниша набора — vanilla JS без сборки; TS остаётся проверкой по JSDoc.
+  * Не поддерживаем WebGL1: PlayCanvas 2 — WebGL2-only.
+  * Не форкаем движок: только вендоринг релизных файлов (`libs/`), апгрейд = новая пара файлов
+    * прогон check/рендера.
+  * Не дублируем редактор PlayCanvas Editor: свой редактор — часть ДНК набора (пишет код-файлы, а не бинарные сцены).
 
 ## Риски и их страховки
-
-| Риск | Страховка |
-|---|---|
-| апстрим PlayCanvas ломает якорь чанков toon-шейдера | `ArcToon.register` молча деградирует до обычных теней + тест-маркер в check; версия движка пинится файлами в `libs/` |
-| расходимость канона и копий скиллов | шаг sync-проверки в `tools/check.mjs` |
-| агент ломает сцену через прямой `pc.*` | фаза B: контракт API + валидация манифеста до рендера |
-| лицензионная чистота вендора | LICENSE-файлы рядом с вендором + NOTICE; версии пинятся коммитом |
+Риск  | Страховка
+--- | ---
+апстрим PlayCanvas ломает якорь чанков toon-шейдера  | `ArcToon.register` молча деградирует до обычных теней + тест-маркер в check; версия движка пинится файлами в `libs/`
+расходимость канона и копий скиллов  | шаг sync-проверки в `tools/check.mjs` + `agent-manifest.json`
+агент ломает сцену через прямой `pc.*`  | API gate: игровой код не требует `pc.*`; lint/grep/check и контрактные тесты ловят обход semantic API
+частично применённая AI-правка  | транзакции `Edit.commit/rollback` + журнал операций
+недетерминированный headless/visual test  | фиксированный seed, viewport и набор ассетов; шум/процедурность привязаны к seed
+ошибка, незаметная по lint  | screenshot/visual smoke + console/error gate
+лицензионная чистота вендора  | LICENSE-файлы рядом с вендором + NOTICE; версии пинятся коммитом
 
 ## Порядок работы
-
-Каждая фаза — отдельная ветка и PR в `main`; до мерджа: `node tools/check.mjs` зелёный,
-headless-рендер игры и редактора без ошибок консоли, скиллы/CLAUDE.md обновлены в том же PR.
+Каждая фаза — отдельная ветка и PR в `main`; до мерджа: для обычной разработки `node tools/check.mjs`, для release/PR gate `node tools/check.mjs --all`; headless-рендер игры и редактора без ошибок консоли, visual smoke зелёный, скиллы/CLAUDE.md/`agent-manifest.json` обновлены в том же PR. В PR должен быть приложен краткий evidence: команды, seed/viewport и результаты проверок.
