@@ -1,6 +1,7 @@
 // The claude/ folder (skills, launch.json template): linked to CLAUDE.md and reaches the users —
 // GitHub web upload skips dot-prefixed names, so skills do not belong in .claude/.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -49,7 +50,15 @@ test('claude/launch.json: game и editor запускают серверы на�
   }
 });
 
-test('в .claude/ нет скиллов', () => {
-  assert.ok(!fs.existsSync(path.join(ROOT, '.claude/skills')),
-    '.claude/skills/ не доедет до пользователей: перенести в claude/skills/ и добавить в таблицу CLAUDE.md');
+test('.claude/skills и .agents/skills — генерированные копии канона (tools/sync-skills.mjs)', () => {
+    const r = spawnSync(process.execPath, ['tools/sync-skills.mjs', '--check'], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(r.status, 0, (r.stderr || '') + (r.stdout || ''));
+    for (const name of SKILLS.map(rel => rel.split('/')[2])) {
+        for (const target of ['.claude/skills', '.agents/skills']) {
+            assert.ok(fs.existsSync(path.join(ROOT, target, name, 'SKILL.md')), target + '/' + name);
+            assert.equal(read(target + '/' + name + '/SKILL.md'), read('claude/skills/' + name + '/SKILL.md'));
+        }
+    }
+    const agents = read('AGENTS.md');
+    for (const rel of SKILLS) assert.ok(agents.includes('`' + rel.split('/')[2] + '`'), 'AGENTS.md не упоминает ' + rel);
 });

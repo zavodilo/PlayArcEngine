@@ -73,11 +73,13 @@ Git: что не едет в репозиторий — `.gitignore` (`.claude/`
    `/** @satisfies {Record<string, any>} */` над ним: без неё tsc не видит опечаток в `X.метод`.
    Поле, заданное `null`, — `/** @type {Тип | null} */`; DOM — приведение
    `/** @type {HTMLInputElement} */ (el)`; поля на чужих объектах и общие записи — в `globals.d.ts`.
-9. **Всё, что нужно пользователю набора, — в путях без точки.** Веб-загрузка на GitHub
-   пропускает `.claude/`, `.github/`, `.gitignore` — любое имя с точкой в начале. Скиллы —
+9. **Канон всего пользовательского — пути без точки; копии для агентов генерируются.**
+   Веб-загрузка на GitHub пропускает dot-имена, поэтому канон скиллов —
    `claude/skills/<имя>/SKILL.md` (новый — ещё строка в таблице скиллов), шаблон панели
-   браузера — `claude/launch.json`. В `.claude/` — только локальное (`settings.local.json`,
-   копия `launch.json`); папку `.claude/skills/` тесты не пропустят.
+   браузера — `claude/launch.json`, вендор движковых скиллов — `claude/vendor/playcanvas/`.
+   Точки входа агентов (`.claude/skills/`, `.agents/skills/`, `.cursor/rules/arcengine.mdc`,
+   `AGENTS.md`) генерирует `tools/sync-skills.mjs`; руками их не правят, `check.mjs` сверяет
+   копии с каноном. В `.claude/` вне `skills/` — только локальное (`settings.local.json`).
 10. **Скиллы и комментарии в коде — на английском.** Кириллица в скилле — провал теста; в коде
    русский остаётся только в строках (словарь `ru` редактора, вывод инструментов, имена тестов).
 11. **Любой элемент интерфейса — запись в `UILayout.js`, через вкладку UI редактора.** Код игры
@@ -123,9 +125,25 @@ _utils/editor/    редактор (в билд не едет): server.mjs (HTTP
                   интерфейса, драг и ресайз поверх вида), history.js (EditHistory:
                   Ctrl+Z / Ctrl+Shift+Z), loader.js, lab.js (вид), debug-tools.js (режим вида и «Lint scene»
                   на панели вида — Debug3D), main.js; tsconfig.json — его типы
-claude/           для Claude Code, едет пользователям (в билд игры — нет): skills/<имя>/SKILL.md — скиллы,
-                  launch.json — шаблон .claude/launch.json для панели браузера
+claude/           едет пользователям (в билд игры — нет): skills/<имя>/SKILL.md — скиллы набора,
+                  vendor/playcanvas/ — вендор @playcanvas/skills v0.3.0 (MIT), launch.json —
+                  шаблон .claude/launch.json для панели браузера
+AGENTS.md         кросс-агентная точка входа (Codex, Cursor и др.): протокол работы, инварианты,
+                  карта скиллов; генерирует tools/sync-skills.mjs
+NOTICE            атрибуция MIT-компонентов (PlayCanvas, @playcanvas/skills, simplex-noise)
+README.md         публичное описание набора (EN): быстрый старт, AI-native раздел, лицензии
+ROADMAP.md        стратегия публичного AI-native набора: фазы A/B/C, лицензии, риски
+tools/            … sync-skills.mjs — генерация копий скиллов для агентов (--check для check.mjs)
 ```
+
+## AI-native слой (фаза A роадмапа)
+
+Агенты обнаруживают скиллы нативно: Claude Code — `.claude/skills/`, Codex/Cursor и
+совместимые — `.agents/skills/` + `AGENTS.md`, Cursor — ещё `.cursor/rules/arcengine.mdc`.
+Канон один (`claude/skills/`, `claude/vendor/`); копии и точки входа перегенерируются
+`node tools/sync-skills.mjs` после любой правки канона (иначе `check.mjs` упадёт).
+Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
+в споре про файлы набора приоритет у скиллов набора.
 
 ## Как начать игру на наборе
 

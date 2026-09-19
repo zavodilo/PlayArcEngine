@@ -1,9 +1,10 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and tests (node --test)
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types and tests
+//  node tools/check.mjs            types, tests and skills sync
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --tests    tests only
+//  node tools/check.mjs --skills   skills sync only
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
@@ -27,6 +28,7 @@ const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit', shell: true }) },
+  { flag: '--skills', title: 'синхронность скиллов', run: () => spawnSync(process.execPath, ['tools/sync-skills.mjs', '--check'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
 const only = ['--types', '--tests'].filter(f => process.argv.includes(f));
