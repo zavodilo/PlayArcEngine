@@ -81,6 +81,14 @@ validates every op before applying and rolls back to a snapshot on failure
 (starters never call `Math.random`), terrain noise from `TERRAIN_NOISE_SEED`.
 Release gate: `node tools/check.mjs --all` (fast profile + headless render/visual smoke;
 puppeteer is a dev-only dependency of the verify environment, not of the kit).
+`tools/headless-gate.mjs --json=report.json` writes a machine-readable report (console
+errors, pixel/DOM smoke, screenshots) — agents read it instead of exit codes. In-page visual
+assertions: `Debug3D.assertVisible/assertInFrame/assertPosition/capture`.
+
+The editor server is localhost-only (127.0.0.1) and hardened: no dot-path serving, path
+traversal contained, request size limits (413), JSON validation (400), constant names behind
+an identifier whitelist, model imports magic-byte checked and confined to `assets/models/`.
+The contract lives in `tests/editor-security.test.mjs`.
 
 Roadmap (phases A+/B+ and beyond): `ROADMAP.md`.
 

@@ -178,9 +178,17 @@ const Scene = {
     },
 
     // The agent's self-check: scene totals + the kit's lint, silent and frame-free.
-    async inspect() {
+    // filter — { kind?, name?, model?, area?: [x0, y0, x1, y1] } (map px): the same
+    // selectors as query(), plus a rectangle. The report is machine-readable:
+    //   { objects, loaded, errors, triangles, fps, findings,   // backwards compatible
+    //     entities, camera, warnings }                        // review-shaped
+    async inspect(filter) {
         const loc = this._location();
-        const snaps = this.query();
+        const snaps = this.query(filter);
+        const area = filter && Array.isArray(filter.area) ? filter.area : null;
+        const entities = area
+            ? snaps.filter(sn => sn.x >= area[0] && sn.y >= area[1] && sn.x <= area[2] && sn.y <= area[3])
+            : snaps;
         const view = /** @type {any} */ (window).World3D ? /** @type {any} */ (window).World3D.view : null;
         let findings = [];
         let triangles = 0;
@@ -189,13 +197,27 @@ const Scene = {
             findings = r.findings;
             triangles = r.stats ? r.stats.triangles : 0;
         }
+        const app = /** @type {any} */ (window).app;
+        const cam = app && app.camera && app.camera.target ? app.camera : null;   // a bare follow() stub has no pose
+        const D = 180 / Math.PI;
         return {
             objects: snaps.length,
-            loaded: snaps.filter(s => s.loaded).length,
-            errors: snaps.filter(s => s.error).map(s => ({ name: s.name, error: s.error })),
+            loaded: snaps.filter(sn => sn.loaded).length,
+            errors: snaps.filter(sn => sn.error).map(sn => ({ name: sn.name, error: sn.error })),
             triangles: triangles,
             fps: /** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0,
-            findings: findings
+            findings: findings,
+            entities: entities.map(sn => ({
+                id: sn.name, kind: sn.kind, model: sn.model,
+                position: [sn.x, sn.y, sn.h], rot: sn.rot, scale: sn.scale,
+                clip: sn.clip, loaded: sn.loaded, error: sn.error
+            })),
+            camera: cam ? {
+                azimuthDeg: Math.round(cam.azimuth * D), pitchDeg: Math.round(cam.pitch * D),
+                zoom: Math.round(cam.zoom * 100) / 100,
+                target: { x: Math.round(cam.target.x), y: Math.round(cam.target.y), h: Math.round(cam.target.h) }
+            } : null,
+            warnings: findings.filter(f => f.level !== 'error')
         };
     },
 

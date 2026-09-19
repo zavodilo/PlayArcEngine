@@ -143,10 +143,14 @@ function readRaw(req, limit) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let over = false;
     req.on('data', c => {
+      if (over) return;                       // drain silently until the client finishes
       size += c.length;
-      if (size > limit) { reject(Object.assign(new Error('request body too large'), { code: 'too_large' })); req.destroy(); return; }
-      chunks.push(c);
+      if (size > limit) {
+        over = true;                          // no destroy: the 413 must reach the client
+        reject(Object.assign(new Error('request body too large'), { code: 'too_large' }));
+      } else chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
@@ -156,6 +160,27 @@ function readRaw(req, limit) {
 async function readBody(req) {
   return (await readRaw(req, 1024 * 1024)).toString('utf8');
 }
+
+// JSON body -> object; malformed JSON is a client error (400), not a server one.
+async function readJson(req, res) {
+    let text;
+    try {
+        text = await readBody(req);
+    } catch (e) {
+        if (e.code === 'too_large') { sendJson(res, 413, failure('too_large')); req.resume(); throw e; }
+        throw e;
+    }
+    try {
+        return JSON.parse(text || '{}');
+    } catch {
+        sendJson(res, 400, { ok: false, code: 'bad_json', error: 'the request body is not valid JSON' });
+        const e = new Error('bad JSON'); e.code = 'bad_json'; throw e;
+    }
+}
+
+// Dot-paths are never served (.git/, .claude/ settings, backups): the editor and the game
+// only load known non-dot routes. Defense in depth on top of the ROOT containment check.
+const hasDotSegment = (pathname) => pathname.split('/').some(seg => seg.startsWith('.'));
 
 const server = http.createServer(async (req, res) => {
   let pathname;
@@ -172,7 +197,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/save-constants') {
     if (req.method !== 'POST') return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');
     try {
-      const body = JSON.parse(await readBody(req) || '{}');
+      const body = await readJson(req, res);
       const result = await saveConstants(ROOT, body.changes);
       const failed = result.results ? result.results.filter(r => !r.ok) : [];
       if (result.patched > 0) {
@@ -181,6 +206,7 @@ const server = http.createServer(async (req, res) => {
       for (const f of failed) console.log(`  ${C.ylw}skip${C.r} ${f.name}: ${f.error}`);
       return sendJson(res, 200, result);
     } catch (e) {
+      if (e.code === 'bad_json' || e.code === 'too_large') return;   // 400/413 already sent
       console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
       return sendJson(res, 500, { ok: false, error: e.message });
     }
@@ -188,12 +214,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/save-objects') {
     if (req.method !== 'POST') return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');
     try {
-      const body = JSON.parse(await readBody(req) || '{}');
+      const body = await readJson(req, res);
       const result = await saveObjects(ROOT, body.objects);
       if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.count} object(s) -> Objects.js ${C.dim}(backup: ${result.backup})${C.r}`);
       else console.log(`  ${C.ylw}skip${C.r} Objects.js: ${result.error} (#${result.index})`);
       return sendJson(res, 200, result);
     } catch (e) {
+      if (e.code === 'bad_json' || e.code === 'too_large') return;   // 400/413 already sent
       console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
       return sendJson(res, 500, { ok: false, error: e.message });
     }
@@ -201,12 +228,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/save-ui') {
     if (req.method !== 'POST') return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');
     try {
-      const body = JSON.parse(await readBody(req) || '{}');
+      const body = await readJson(req, res);
       const result = await saveUI(ROOT, body.elements);
       if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.count} UI element(s) -> UILayout.js ${C.dim}(backup: ${result.backup})${C.r}`);
       else console.log(`  ${C.ylw}skip${C.r} UILayout.js: ${result.error} (#${result.index})`);
       return sendJson(res, 200, result);
     } catch (e) {
+      if (e.code === 'bad_json' || e.code === 'too_large') return;   // 400/413 already sent
       console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
       return sendJson(res, 500, { ok: false, error: e.message });
     }
@@ -216,7 +244,7 @@ const server = http.createServer(async (req, res) => {
     try {
       let result;
       if (pathname === '/api/pick-model') {
-        result = await pickModel(JSON.parse(await readBody(req) || '{}').title);
+        result = await pickModel((await readJson(req, res)).title);
       } else {
         const name = path.basename(String(new URL(req.url, 'http://x').searchParams.get('name') || 'model.fbx'));
         result = await storeModel(await readRaw(req, 200 * 1024 * 1024), name, null);
@@ -225,6 +253,7 @@ const server = http.createServer(async (req, res) => {
       else if (result.code !== 'cancelled') console.log(`  ${C.ylw}model${C.r} ${result.error}${result.detail ? ' — ' + result.detail : ''}`);
       return sendJson(res, 200, result);
     } catch (e) {
+      if (e.code === 'bad_json') return;              // the 400 is already sent
       console.log(`  ${C.red}model FAILED${C.r} ${e.message}`);
       return sendJson(res, e.code === 'too_large' ? 413 : 500, e.code === 'too_large' ? failure('too_large') : { ok: false, error: e.message });
     }
@@ -238,6 +267,9 @@ const server = http.createServer(async (req, res) => {
     pathname = EDITOR_URL_PATH + 'index.html';
   }
 
+  if (hasDotSegment(pathname)) {
+    return send(res, 403, { 'Content-Type': 'text/plain' }, 'Forbidden: dot-paths are not served');
+  }
   const filePath = path.join(ROOT, pathname);
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== ROOT) {
     return send(res, 403, { 'Content-Type': 'text/plain' }, 'Forbidden');

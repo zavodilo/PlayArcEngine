@@ -167,7 +167,15 @@ Math.random — тест apigate), рельеф — константа `TERRAIN_
 Проверки: `node tools/check.mjs` — быстрый профиль (типы, тесты, sync, манифест);
 `node tools/check.mjs --all` — релизный gate: + `tools/headless-gate.mjs --render/--visual`
 (headless Chrome, puppeteer — dev-only зависимость окружения проверки, не рантайма набора;
-без неё gate возвращает код 2 с инструкцией). Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
+без неё gate возвращает код 2 с инструкцией). `--json=FILE` у gate пишет машинный отчёт
+{ok, viewport, seed, game, editor, screenshots, failures} — агент читает его, а не код
+выхода. Визуальные утверждения в странице: `Debug3D.assertVisible/assertInFrame/
+assertPosition/capture` — возвращают {ok, code, details} без исключений.
+Безопасность editor server: слушает только 127.0.0.1; статика не отдаёт dot-пути
+(.git/, .backups/); traversal закрыт containment-проверкой; тела запросов ограничены
+(JSON 1MB, модель 200MB) с 413; битый JSON — 400; имена констант — IDENT-whitelist;
+импорт модели пишем только в assets/models/ после magic-bytes. Контракт — в
+`tests/editor-security.test.mjs`. Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
 в споре про файлы набора приоритет у скиллов набора.
 
 ## Как начать свою игру на наборе
