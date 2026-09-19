@@ -83,6 +83,9 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/') pathname = '/index.html';
 
   // guard against escaping the root
+  if (pathname.split('/').some(seg => seg.startsWith('.'))) {
+    return send(res, 403, { 'Content-Type': 'text/plain' }, 'Forbidden: dot-paths are not served');
+  }
   const filePath = path.join(ROOT, pathname);
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== ROOT) {
     return send(res, 403, { 'Content-Type': 'text/plain' }, 'Forbidden');

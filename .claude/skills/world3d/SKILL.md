@@ -269,8 +269,15 @@ Scene.manifest();                                     // SCENE_SCHEMA
 - Records are the canon `Location3D.objects` defs (the same objects the editor edits):
   `spawn` goes through `Location3D.addObject` (group/ink/outline applied), `move` edits the
   def in place and calls `placeObject`. Nothing here bypasses `World3D.addObject`.
-- `inspect()` is the agent's verification loop: objects/loaded/errors/triangles/fps plus
-  the lint findings; pair it with a headless screenshot for the look (skill `verify`).
+- `inspect(filter?)` is the agent's verification loop: `{ kind?, name?, model?, area? }`
+  selectors, machine-readable `{ objects, loaded, errors, triangles, fps, findings,
+  entities, camera, warnings }`; pair it with a headless screenshot for the look
+  (skill `verify`).
+- Visual assertions return `{ ok, code, details }` instead of throwing:
+  `Debug3D.assertVisible(name)` (loaded + at/above ground + in frame),
+  `assertInFrame(name)`, `assertPosition(name, x, y, tol)`, `Debug3D.capture()`
+  (render now + PNG dataUrl). The headless gate aggregates them and writes a JSON report
+  (`tools/headless-gate.mjs --json=FILE`).
 - Composite edits are transactions: `Edit.begin(label).add(model, opts).update(name, patch)
   .remove(name).commit()` — every op is validated BEFORE anything is applied; an apply
   failure rolls the snapshot back and rethrows, the outcome lands in `Scene.journal()`

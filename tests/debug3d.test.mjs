@@ -65,3 +65,30 @@ test('поза удержанного вида: глаз не ниже рель�
   const c = Debug3D.poseFrom({ eye: [0, 0, 100], yaw: Math.PI / 2, pitch: 0.5 }, null);
   assert.ok(Math.abs(c.target.x) < 1e-6 && c.target.y > 80 && c.target.h > 140, JSON.stringify(c.target));
 });
+
+test('assert*: машиночитаемые исходы вместо исключений', () => {
+    const page = loadScripts(['js/Debug3D.js'], { pc: stub(), World3D: stub() });
+    const Debug3D = page.get('Debug3D');
+    const objects = [
+        { def: { name: 'ok', x: 100, y: 100, h: 0 }, mesh: {}, error: null },
+        { def: { name: 'unloaded', x: 100, y: 100, h: 0 }, mesh: null, error: '404' },
+        { def: { name: 'buried', x: 100, y: 100, h: -5 }, mesh: {}, error: null },
+    ];
+    page.ctx.app = { location: { objects, terrain: { heightAt: () => 0 } }, camera: {} };
+    page.ctx.World3D = {
+        view: { refreshMatrices() {}, projectToScreen: (x, y) => ({ x: 10, y: 10, visible: x < 200, behind: x >= 200 }) },
+        fps: () => 60
+    };
+    assert.equal(JSON.stringify(Debug3D.assertPosition('ok', 100, 100, 1)), JSON.stringify({ ok: true, code: 'position', details: { name: 'ok', x: 100, y: 100 } }));   // cross-realm
+    const bad = Debug3D.assertPosition('ok', 150, 100, 1);
+    assert.equal(bad.ok, false);
+    assert.equal(bad.code, 'position-mismatch');
+    assert.equal(Debug3D.assertInFrame('ok').code, 'in-frame');
+    objects.push({ def: { name: 'far', x: 900, y: 900, h: 0 }, mesh: {}, error: null });
+    assert.equal(Debug3D.assertInFrame('far').code, 'behind-camera');
+    assert.equal(Debug3D.assertVisible('unloaded').code, 'not-loaded');
+    assert.equal(Debug3D.assertVisible('buried').code, 'under-ground');
+    assert.equal(Debug3D.assertVisible('ok').code, 'visible');
+    assert.equal(Debug3D.assertVisible('nope').code, 'no-object');
+    assert.equal(Debug3D.capture().code, 'no-canvas');
+});

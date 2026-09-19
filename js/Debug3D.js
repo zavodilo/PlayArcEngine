@@ -294,6 +294,65 @@ const Debug3D = {
         return { on: best(on), off: best(off), delta: Math.round((best(on) - best(off)) * 100) / 100, runs: { on, off } };
     },
 
+    // --- Machine-readable assertions for the AI loop (review: visual verification) -----
+    // Every assert returns { ok, code, details } instead of throwing: the agent reads the
+    // outcome and fixes the scene; the headless gate aggregates them into its JSON report.
+
+    _rec(name) {
+        const app = /** @type {any} */ (window).app;
+        const loc = app && app.location;
+        return loc ? loc.objects.find(r => r.def.name === name) : null;
+    },
+
+    // The object exists, its model has loaded, and it sits at/above the ground it stands on.
+    assertVisible(name) {
+        const rec = this._rec(name);
+        if (!rec) return { ok: false, code: 'no-object', details: { name } };
+        if (!rec.mesh) return { ok: false, code: 'not-loaded', details: { name, error: rec.error } };
+        const view = /** @type {any} */ (window).World3D.view;
+        const t = /** @type {any} */ (window).app.location.terrain;
+        const d = rec.def;
+        const ground = t ? t.heightAt(d.x, d.y) : 0;
+        if (d.h < -1) return { ok: false, code: 'under-ground', details: { name, h: d.h, ground } };
+        const frame = this.assertInFrame(name);
+        if (!frame.ok) return frame;
+        return { ok: true, code: 'visible', details: { name, view: view ? true : false } };
+    },
+
+    // The object's anchor projects inside the current frame (view.projectToScreen).
+    assertInFrame(name) {
+        const rec = this._rec(name);
+        if (!rec) return { ok: false, code: 'no-object', details: { name } };
+        const view = /** @type {any} */ (window).World3D.view;
+        if (!view) return { ok: false, code: 'no-view', details: { name } };
+        view.refreshMatrices();
+        const d = rec.def;
+        const p = view.projectToScreen(d.x, d.y, (d.h || 0) + 1);
+        return p.visible
+            ? { ok: true, code: 'in-frame', details: { name, screen: [Math.round(p.x), Math.round(p.y)] } }
+            : { ok: false, code: p.behind ? 'behind-camera' : 'out-of-frame', details: { name, screen: [Math.round(p.x), Math.round(p.y)] } };
+    },
+
+    // The record sits where the agent meant to put it (map px, tolerance inclusive).
+    assertPosition(name, x, y, tol) {
+        const rec = this._rec(name);
+        if (!rec) return { ok: false, code: 'no-object', details: { name } };
+        const t = tol == null ? 1 : tol, d = rec.def;
+        const dx = d.x - x, dy = d.y - y;
+        return Math.abs(dx) <= t && Math.abs(dy) <= t
+            ? { ok: true, code: 'position', details: { name, x: d.x, y: d.y } }
+            : { ok: false, code: 'position-mismatch', details: { name, want: [x, y], got: [d.x, d.y], dx, dy } };
+    },
+
+    // Render now and hand back the frame: the agent LOOKS at the result of its edit.
+    capture() {
+        const W = /** @type {any} */ (window).World3D;
+        if (!W || !W.canvas) return { ok: false, code: 'no-canvas' };
+        W.renderFrame();
+        const c = W.canvas;
+        return { ok: true, width: c.width, height: c.height, dataUrl: c.toDataURL('image/png') };
+    },
+
     // --- Debug render modes ----------------------------------------------------------------------
 
     // 'backfaces' — faces the engine treats as back are RED (an inside-out mesh turns red from

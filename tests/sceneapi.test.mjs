@@ -193,3 +193,23 @@ test('Scene.seed: последовательность Scene.random воспро
     Scene.seed(8);
     assert.notDeepEqual(a, [Scene.random(), Scene.random(), Scene.random()]);
 });
+
+test('inspect: фильтры kind/name/area и машиночитаемый отчёт (entities/camera/warnings)', async () => {
+    const { Scene } = makeScene();
+    Scene.spawn('assets/models/mill.fbx', { name: 'a', x: 100, y: 100 });
+    Scene.spawn('assets/models/mill.fbx', { name: 'b', x: 900, y: 900 });
+    Scene.spawn('assets/models/character.glb', { name: 'hero', kind: 'actor', x: 500, y: 500 });
+    const all = await Scene.inspect();
+    assert.equal(all.objects, 3);
+    assert.equal(all.entities.length, 3);
+    assert.equal(JSON.stringify(all.entities[0].position), '[100,100,0]');   // cross-realm
+    assert.equal(all.entities[0].id, 'a');
+    assert.ok(Array.isArray(all.warnings));
+    const area = await Scene.inspect({ area: [0, 0, 200, 200] });
+    assert.equal(area.entities.map(e => e.id).join(','), 'a');
+    const kind = await Scene.inspect({ kind: 'actor' });
+    assert.equal(kind.entities.map(e => e.id).join(','), 'hero');
+    const one = await Scene.inspect({ name: 'b' });
+    assert.equal(one.entities.map(e => e.id).join(','), 'b');
+    assert.equal(all.camera, null, 'без камеры в стабе camera = null');
+});

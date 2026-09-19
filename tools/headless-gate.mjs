@@ -20,6 +20,8 @@ import url from 'node:url';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
+const jsonArg = args.find(a => a.startsWith('--json='));
+const JSON_OUT = jsonArg ? jsonArg.slice(7) : null;
 const WANT_RENDER = args.includes('--render') || args.includes('--all');
 const WANT_VISUAL = args.includes('--visual') || args.includes('--all');
 if (!WANT_RENDER && !WANT_VISUAL) { console.error('headless-gate: pass --render, --visual or --all'); process.exit(1); }
@@ -41,6 +43,11 @@ const SEED = 42;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const failures = [];
 const note = (m) => console.log('  ' + m);
+const report = {
+    ok: true, gate: 'headless', viewport: VIEWPORT, seed: SEED,
+    checks: { render: WANT_RENDER, visual: WANT_VISUAL },
+    game: null, editor: null, screenshots: [], failures: []
+};
 
 const serve = (script, port) => {
     const srv = spawn(process.execPath, [script, '--port=' + port, '--no-open'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -50,6 +57,7 @@ const serve = (script, port) => {
     });
 };
 
+let smokeEd = null;
 const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage']
@@ -100,8 +108,10 @@ try {
         const { page, errors } = await openPage(8291, '/index.html');
         await page.waitForFunction(() => window.app && window.app.location && typeof Scene !== 'undefined', { timeout: 30000 });
         await sleep(4000);
+        let smokeGame = null;
         if (WANT_VISUAL) {
             const s = await smoke(page);
+            smokeGame = s;
             note('game smoke: ' + JSON.stringify(s));
             if (!s.ok) failures.push('game: ' + s.why);
             if (s.uniqueColors16 < 10) failures.push('game: frame looks blank (uniqueColors16 ' + s.uniqueColors16 + ')');
@@ -111,6 +121,12 @@ try {
         const bad = errors.filter(e => !/glReadPixels/.test(e));
         if (WANT_RENDER && bad.length) failures.push('game console: ' + bad.slice(0, 3).join(' | '));
         note('game: ' + (bad.length ? 'ERRORS ' + bad.length : 'console clean'));
+        if (JSON_OUT) {
+            const shot = path.resolve(path.dirname(JSON_OUT), 'gate-game.png');
+            await page.screenshot({ path: shot });
+            report.screenshots.push(shot);
+        }
+        report.game = { consoleErrors: bad, smoke: smokeGame };
         await page.close();
     }
     gameSrv.kill();
@@ -124,6 +140,7 @@ try {
         if (WANT_VISUAL) {
             const s = await smoke(page);
             const panes = await page.evaluate(() => document.querySelectorAll('#pane-tabs [data-tab], .pane-panel').length);
+            smokeEd = Object.assign({ panes }, s);
             note('editor smoke: ' + JSON.stringify(s) + ' panes:' + panes);
             if (!s.ok) failures.push('editor: ' + s.why);
             if (s.uniqueColors16 < 10) failures.push('editor: view looks blank');
@@ -132,6 +149,12 @@ try {
         const bad = errors.filter(e => !/glReadPixels/.test(e));
         if (WANT_RENDER && bad.length) failures.push('editor console: ' + bad.slice(0, 3).join(' | '));
         note('editor: ' + (bad.length ? 'ERRORS ' + bad.length : 'console clean'));
+        if (JSON_OUT) {
+            const shot = path.resolve(path.dirname(JSON_OUT), 'gate-editor.png');
+            await page.screenshot({ path: shot });
+            report.screenshots.push(shot);
+        }
+        report.editor = { consoleErrors: bad, smoke: smokeEd };
         await page.close();
     }
     edSrv.kill();
@@ -139,6 +162,14 @@ try {
     await browser.close();
 }
 
+report.ok = failures.length === 0;
+report.failures = failures;
+if (JSON_OUT) {
+    const fs = await import('node:fs');
+    fs.mkdirSync(path.dirname(path.resolve(JSON_OUT)), { recursive: true });
+    fs.writeFileSync(path.resolve(JSON_OUT), JSON.stringify(report, null, 2));
+    note('report: ' + path.resolve(JSON_OUT));
+}
 if (failures.length) {
     console.error('headless-gate: FAIL\n  ' + failures.join('\n  '));
     process.exit(1);
