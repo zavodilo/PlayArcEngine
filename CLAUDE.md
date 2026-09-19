@@ -106,7 +106,10 @@ js/               код игры — классические скрипты:
   SceneSchema.js  GENERATED (tools/manifest.mjs): машинно-читаемый контракт сцены — константы с
                   диапазонами редактора, поля записей, API
   SceneAPI.js     семантический слой для агентов и игр: Scene.spawn/move/remove/query/inspect/
-                  follow/manifest с валидацией по SCENE_SCHEMA до кадра
+                  follow/manifest, транзакции Edit.begin/…/commit/rollback с журналом,
+                  Kit.* (state, frame-хуки, часы), UI.query/patch, Asset.preload/list/loaded,
+                  Scene.seed/random (детерминизм агентских операций) — всё с валидацией
+                  по SCENE_SCHEMA до кадра; агентский код не трогает pc.* (тест apigate)
   CameraControl.js CameraController: цель/азимут/наклон/зум, мышь, клавиши, тач; игровой и свободный режимы
   Debug3D.js      инструменты разработки (в кадре не работают, пока не позвали): lint() — сетки изнанкой,
                   конвенция карт нормалей, лимит света и солнце последним, лимиты шейдеров WebGL2, пустой кадр;
@@ -151,7 +154,15 @@ scaffold/         исходники стартеров для create-arcengine 
 `node tools/sync-skills.mjs` после любой правки канона (иначе `check.mjs` упадёт).
 Семантический слой фазы B: `Scene.*` (js/SceneAPI.js) над каноном записей; манифест
 `js/SceneSchema.js` перегенерируется `node tools/manifest.mjs` после правок Constants.js или
-схемы редактора (check.mjs сверяет). Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
+схемы редактора (check.mjs сверяет). Составные правки агента — транзакции
+`Edit.begin(label).add/update/remove…commit()`: валидация всех операций до применения,
+при ошибке — откат к снимку и запись в `Scene.journal()` (committed/rolledback/rejected/
+discarded). Детерминизм: `Scene.seed(n)` + `Scene.random()` (стартеры не пользуют
+Math.random — тест apigate), рельеф — константа `TERRAIN_NOISE_SEED`.
+Проверки: `node tools/check.mjs` — быстрый профиль (типы, тесты, sync, манифест);
+`node tools/check.mjs --all` — релизный gate: + `tools/headless-gate.mjs --render/--visual`
+(headless Chrome, puppeteer — dev-only зависимость окружения проверки, не рантайма набора;
+без неё gate возвращает код 2 с инструкцией). Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
 в споре про файлы набора приоритет у скиллов набора.
 
 ## Как начать свою игру на наборе

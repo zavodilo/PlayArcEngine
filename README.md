@@ -68,8 +68,14 @@ keep the invariants (zero deps, constants in `Constants.js`, 3D is a view, HUD v
 verify with `check.mjs` and `Debug3D.lint()`. Skills ship in three flavors from one canon:
 hand-edit `claude/skills/` or `claude/vendor/`, then `node tools/sync-skills.mjs`.
 
-Roadmap (semantic scene API, machine-readable manifest, `create-arcengine` scaffold):
-`ROADMAP.md`.
+Composite agent edits are transactions: `Edit.begin(label).add/update/remove…commit()`
+validates every op before applying and rolls back to a snapshot on failure
+(`Scene.journal()` records the outcome). Determinism: `Scene.seed(n)` + `Scene.random()`
+(starters never call `Math.random`), terrain noise from `TERRAIN_NOISE_SEED`.
+Release gate: `node tools/check.mjs --all` (fast profile + headless render/visual smoke;
+puppeteer is a dev-only dependency of the verify environment, not of the kit).
+
+Roadmap (phases A+/B+ and beyond): `ROADMAP.md`.
 
 ## License
 
