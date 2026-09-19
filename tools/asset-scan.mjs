@@ -30,6 +30,7 @@ export const CODE_FILES = [
 export const BUILD_EXCLUDE = [
   'tools', 'build', 'dist', '.git', '.claude', 'claude', '_utils', 'tests',
   'CLAUDE.md', 'run.bat', 'build.bat', 'check.bat', 'upload.bat', 'editor.bat', 'README.md', 'tsconfig.json', 'globals.d.ts',
+  'scaffold', 'package.json', 'NOTICE', 'ROADMAP.md', 'STARTER.md',
 ];
 
 const SCAN_EXT = new Set(['.js', '.html', '.css']);

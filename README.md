@@ -48,6 +48,19 @@ Requires Node.js (any modern LTS); the game itself needs none of it.
 3. Animated characters — `.glb` + `Model3D.clips(root).play('run')` (cross-fade built in).
 4. HUD — records in `UILayout.js` (editor UI tab) + `UI.get(id).setText/setValue/show/onClick`.
 
+## Starting your own game on the kit
+
+```
+node tools/create-arcengine.mjs my-game --starter survival   # or empty | kit
+cd my-game && node tools/dev-server.mjs
+```
+
+The scaffold copies the whole kit (game, editor, tools, tests, skills), overlays the
+starter's `js/` files and regenerates the agent skill copies inside the target
+(`--no-skills` to skip). No npm and no build step in the target, ever.
+Starters: `kit` (sample as is), `empty` (blank scene), `survival` (waves chase the hero
+through the Scene API — a working reference of the semantic layer).
+
 ## AI-native workflow
 
 Agents start from `AGENTS.md` (or `CLAUDE.md`): read the skill for the area you touch,

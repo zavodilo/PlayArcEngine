@@ -137,7 +137,10 @@ AGENTS.md         кросс-агентная точка входа (Codex, Curs
 NOTICE            атрибуция MIT-компонентов (PlayCanvas, @playcanvas/skills, simplex-noise)
 README.md         публичное описание набора (EN): быстрый старт, AI-native раздел, лицензии
 ROADMAP.md        стратегия публичного AI-native набора: фазы A/B/C, лицензии, риски
-tools/            … sync-skills.mjs — генерация копий скиллов для агентов (--check для check.mjs)
+tools/            … sync-skills.mjs — генерация копий скиллов для агентов (--check для check.mjs);
+                  manifest.mjs — генерация js/SceneSchema.js; create-arcengine.mjs — скаффолд
+                  новой игры на наборе (стартеры kit/empty/survival, --no-skills)
+scaffold/         исходники стартеров для create-arcengine (оверлеи js/); в архив игры не едет
 ```
 
 ## AI-native слой (фаза A роадмапа)
@@ -150,6 +153,12 @@ tools/            … sync-skills.mjs — генерация копий скил
 `js/SceneSchema.js` перегенерируется `node tools/manifest.mjs` после правок Constants.js или
 схемы редактора (check.mjs сверяет). Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
 в споре про файлы набора приоритет у скиллов набора.
+
+## Как начать свою игру на наборе
+
+`node tools/create-arcengine.mjs <папка> --starter kit|empty|survival [--no-skills]` — копия
+набора + оверлей стартера + копии скиллов внутри цели; дальше `node tools/dev-server.mjs`.
+Survival-стартер — образцовый пользователь семантического `Scene.*` (фазы B роадмапа).
 
 ## Как начать игру на наборе
 
