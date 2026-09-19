@@ -103,6 +103,10 @@ js/               код игры — классические скрипты:
                   (Model3D.clips(root).play('run') с плавным переходом)
   Location3D.js   локация: View3D + Terrain3D + текстура земли (LOCATION_GROUND) + объекты (addObject/placeObject,
                   update(dt) — вращение частей по anim, клип по clip)
+  SceneSchema.js  GENERATED (tools/manifest.mjs): машинно-читаемый контракт сцены — константы с
+                  диапазонами редактора, поля записей, API
+  SceneAPI.js     семантический слой для агентов и игр: Scene.spawn/move/remove/query/inspect/
+                  follow/manifest с валидацией по SCENE_SCHEMA до кадра
   CameraControl.js CameraController: цель/азимут/наклон/зум, мышь, клавиши, тач; игровой и свободный режимы
   Debug3D.js      инструменты разработки (в кадре не работают, пока не позвали): lint() — сетки изнанкой,
                   конвенция карт нормалей, лимит света и солнце последним, лимиты шейдеров WebGL2, пустой кадр;
@@ -142,7 +146,9 @@ tools/            … sync-skills.mjs — генерация копий скил
 совместимые — `.agents/skills/` + `AGENTS.md`, Cursor — ещё `.cursor/rules/arcengine.mdc`.
 Канон один (`claude/skills/`, `claude/vendor/`); копии и точки входа перегенерируются
 `node tools/sync-skills.mjs` после любой правки канона (иначе `check.mjs` упадёт).
-Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
+Семантический слой фазы B: `Scene.*` (js/SceneAPI.js) над каноном записей; манифест
+`js/SceneSchema.js` перегенерируется `node tools/manifest.mjs` после правок Constants.js или
+схемы редактора (check.mjs сверяет). Вендоренные скиллы PlayCanvas описывают движок (эффекты, чанки, glb, пиксель-проверки);
 в споре про файлы набора приоритет у скиллов набора.
 
 ## Как начать игру на наборе
@@ -154,10 +160,12 @@ tools/            … sync-skills.mjs — генерация копий скил
    `pc.Mesh` из вершин или `Model3D.load` + `Model3D.build` в `app.location.view` ->
    `World3D.addObject` -> позиция на `app.location.terrain.heightAt(x, y)` (в зеркальном
    мире: `setPosition(-x, h, y)`).
-3. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
+3. Декларативно (агенты и быстрые прототипы): `Scene.spawn(model, opts)`, `Scene.move(name, patch)`,
+   `Scene.query()`, `await Scene.inspect()` — валидация по манифесту, ошибки читабельны без кадра.
+4. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
    сам (скилл `world3d`). Поворот сущности — `World3D.rotQuat` / `eulerFromQuat`. Камера за героем —
    `app.camera.follow(obj)` (объект с полями `x`, `y`).
-4. Интерфейс — записи в `UILayout.js` (вкладка UI редактора) + `UI.get(id)` в коде (скилл `ui`,
+5. Интерфейс — записи в `UILayout.js` (вкладка UI редактора) + `UI.get(id)` в коде (скилл `ui`,
    инвариант 11). Новые числа — в `Constants.js` и `_utils/editor/schema.js`.
 
 ## Чего в наборе нет

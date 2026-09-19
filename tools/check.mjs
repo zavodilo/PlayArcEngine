@@ -29,6 +29,7 @@ const STEPS = [
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit', shell: true }) },
   { flag: '--skills', title: 'синхронность скиллов', run: () => spawnSync(process.execPath, ['tools/sync-skills.mjs', '--check'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--skills', title: 'манифест сцены', run: () => spawnSync(process.execPath, ['tools/manifest.mjs', '--check'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
 const only = ['--types', '--tests'].filter(f => process.argv.includes(f));
