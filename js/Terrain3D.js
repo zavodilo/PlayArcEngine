@@ -9,8 +9,13 @@
 // would start to sink or float.
 //
 // Material — a texture tile (setGroundImage), repeated every GROUND_TILE_SIZE px. The grid and
-// the ring share the same UVs — (x/W, y/H), so the tile continues beyond the edge without a
-// seam. The ring is tinted by WORLD3D_OUTER_TINT (less than 1 — the location boundary is visible).
+// the ring share the same UVs — (x/W, y/H), so the tile continues beyond the edge without
+// a seam. The ring is tinted by WORLD3D_OUTER_TINT (less than 1 — the location boundary is visible).
+//
+// GEOMETRY lives in the PlayCanvas world, mirrored on X versus the map (skill world3d,
+// §Coordinates): a node (x, h, y) of the field is written as (-x, h, y). Winding is chosen so
+// the faces look at the sky (the guard after the normal pass flips the order if the engine's
+// front-face rule disagrees). Normals — by the triangles, in the same space.
 //
 // THE TERRAIN IS A PICTURE. Game logic does not ask 3D for height: the grid cell depends
 // on the device (mobile — larger), and the computation would diverge between them.
@@ -20,7 +25,7 @@ class Terrain3D {
     constructor(view, cfg) {
         const U = 'undefined';
         this.view = view;
-        this.scene = view.scene;
+        this.app = view.app;
         this.worldW = Math.max(64, cfg.worldW);
         this.worldH = Math.max(64, cfg.worldH);
         this.cell = Math.max(4, cfg.cell || (typeof TERRAIN_CELL !== U ? TERRAIN_CELL : 8));
@@ -34,6 +39,7 @@ class Terrain3D {
         // The camera pitch limit reads the ring width: the ring edge must not get into the frame.
         this.outerRing = Terrain3D.OUTER_RING;
         this.meshes = [];
+        this.entities = [];
         this.texture = null;
         this._buildMaterials();
         this._buildField();
@@ -47,52 +53,62 @@ class Terrain3D {
     // Two materials on one texture: the location grid and the ring beyond the edge (the ring
     // has its own brightness). Until there is a texture — flat green.
     _buildMaterials() {
-        const mat = new BABYLON.StandardMaterial('terrainMat', this.scene);
-        mat.metadata = { toonGroup: 'ground' };
-        mat.diffuseColor = new BABYLON.Color3(0.25, 0.4, 0.18);
-        World3D.applyMaterialConstants(mat);
-        this.material = mat;
-        const outer = new BABYLON.StandardMaterial('terrainOuterMat', this.scene);
-        outer.metadata = { toonGroup: 'ground' };
-        outer.diffuseColor = new BABYLON.Color3(0.25, 0.4, 0.18);
-        World3D.applyMaterialConstants(outer);
-        this.outerMaterial = outer;
+        const mk = (name) => {
+            const mat = /** @type {ArcMaterial} */ (new pc.StandardMaterial());
+            mat.name = name;
+            mat.arc = { group: 'ground' };
+            mat.diffuse = new pc.Color(0.25, 0.4, 0.18);
+            World3D.toon.attach(this.view, mat);
+            World3D.applyMaterialConstants(mat);
+            return mat;
+        };
+        this.material = mk('terrainMat');
+        this.outerMaterial = mk('terrainOuterMat');
     }
 
-    // Ground texture tile (Image or Canvas). DynamicTexture with invertY = false:
-    // V goes down the map, like y.
+    // Ground texture tile (Image or Canvas). The upload keeps the image rows as they are:
+    // V goes down the map, like y (the old DynamicTexture with invertY = false).
     setGroundImage(img) {
         if (!img || !(img.width > 0)) return;
         const c = document.createElement('canvas');
         c.width = img.width;
         c.height = img.height;
         c.getContext('2d').drawImage(img, 0, 0);
-        const tex = new BABYLON.DynamicTexture('groundTile', c, this.scene, true,
-            BABYLON.Texture.TRILINEAR_SAMPLINGMODE, BABYLON.Constants.TEXTUREFORMAT_RGBA, false);
-        tex.update(false);
-        tex.wrapU = BABYLON.Texture.WRAP_ADDRESSMODE;
-        tex.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
-        tex.anisotropicFilteringLevel = IS_MOBILE ? 2 : 8;
+        const tex = new pc.Texture(this.app.graphicsDevice, {
+            width: img.width,
+            height: img.height,
+            mipmaps: true,
+            minFilter: pc.FILTER_LINEAR_MIPMAP_LINEAR,
+            magFilter: pc.FILTER_LINEAR,
+            addressU: pc.ADDRESS_REPEAT,
+            addressV: pc.ADDRESS_REPEAT
+        });
+        tex.name = 'groundTile';
+        tex.anisotropy = IS_MOBILE ? 2 : 8;
+        tex.setSource(c);
         const old = this.texture;
         this.texture = tex;
         this.applyTileSize();
         // With a texture the material color is a multiplier: white for the grid, for the ring —
-        // brightness WORLD3D_OUTER_TINT (metadata.outer is read by applyMaterialConstants).
-        this.material.diffuseTexture = tex;
-        this.material.diffuseColor = new BABYLON.Color3(1, 1, 1);
-        this.outerMaterial.diffuseTexture = tex;
-        this.outerMaterial.metadata.outer = true;
+        // brightness WORLD3D_OUTER_TINT (mat.arc.outer is read by applyMaterialConstants).
+        this.material.diffuseMap = tex;
+        this.material.diffuse = new pc.Color(1, 1, 1);
+        this.outerMaterial.diffuseMap = tex;
+        this.outerMaterial.diffuse = new pc.Color(1, 1, 1);
+        /** @type {ArcMaterial} */ (this.outerMaterial).arc.outer = true;
         World3D.applyMaterialConstants(this.outerMaterial);
-        if (old) { try { old.dispose(); } catch (e) { /* ok */ } }
+        this.material.update();
+        this.outerMaterial.update();
+        if (old) { try { old.destroy(); } catch (e) { /* ok */ } }
     }
 
-    // Tile repeat — via the texture scale: u' = (x/W)·(W/tile) = x/tile.
+    // Tile repeat — via the material's map tiling: u' = (x/W)·(W/tile) = x/tile.
     // GROUND_TILE_SIZE changed (editor) — only this.
     applyTileSize() {
         if (!this.texture) return;
         const tile = Math.max(16, (typeof GROUND_TILE_SIZE !== 'undefined') ? GROUND_TILE_SIZE : 512);
-        this.texture.uScale = this.worldW / tile;
-        this.texture.vScale = this.worldH / tile;
+        this.material.diffuseMapTiling = new pc.Vec2(this.worldW / tile, this.worldH / tile);
+        this.outerMaterial.diffuseMapTiling = new pc.Vec2(this.worldW / tile, this.worldH / tile);
     }
 
     // --- Height field ----------------------------------------------------------------
@@ -160,8 +176,10 @@ class Terrain3D {
 
     // --- Grids --------------------------------------------------------------------
 
-    // Indices of a regular nx×ny grid: triangles (a,b,d)(a,d,c) along the diagonal
-    // a-d; swap — reversed winding.
+    // Indices of a regular nx×ny grid in MAP order: triangles (a,b,d)(a,d,c) along the
+    // diagonal a-d; swap — reversed winding. The mesh writer mirrors them into the
+    // PlayCanvas world (X negated flips the screen winding, so the order is reversed
+    // again on the way out).
     static gridIndices(nx, ny, swap) {
         const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
         let p = 0;
@@ -175,10 +193,33 @@ class Terrain3D {
         return idx;
     }
 
-    // Location grid. ORIENTATION: the ground needs a +Y normal. ComputeNormals takes the
-    // face normal (p1−p2)×(p3−p2) — the winding is chosen by it, and a safeguard
-    // after ComputeNormals flips it if the engine computed otherwise. Do not
-    // "fix" the order by hand: the right-handed scene already cost an iteration.
+    // Vertex normals by triangle area in PC space; returns { normals, up } where up is the
+    // mean Y of the face normals — the winding guard reads it.
+    static computeNormals(pos, idx) {
+        const n = new Float32Array(pos.length);
+        let upSum = 0;
+        for (let t = 0; t < idx.length; t += 3) {
+            const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+            const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+            const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+            const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+            upSum += ny;
+            n[a] += nx; n[a + 1] += ny; n[a + 2] += nz;
+            n[b] += nx; n[b + 1] += ny; n[b + 2] += nz;
+            n[c] += nx; n[c + 1] += ny; n[c + 2] += nz;
+        }
+        for (let i = 0; i < n.length; i += 3) {
+            const l = Math.hypot(n[i], n[i + 1], n[i + 2]) || 1;
+            n[i] /= l; n[i + 1] /= l; n[i + 2] /= l;
+        }
+        return { normals: n, up: upSum };
+    }
+
+    // Location grid. ORIENTATION: the ground needs a +Y normal and a front face that looks
+    // at the sky. Positions go into the engine mirrored (x -> -x); the winding is the map
+    // order REVERSED (the mirror flips it once more), and a safeguard after the normal pass
+    // flips it again if the faces came out downward-facing. Do not "fix" the order by hand:
+    // the handedness of the world already cost an iteration.
     _buildGeometry() {
         const nx = this.nx, ny = this.ny, cs = this.cell, NV = nx * ny, H = this.hgrid;
         const W = this.worldW, HH = this.worldH;
@@ -186,39 +227,20 @@ class Terrain3D {
         for (let j = 0; j < ny; j++) {
             for (let i = 0; i < nx; i++) {
                 const k = j * nx + i, x = i * cs, y = j * cs;
-                pos[k * 3] = x; pos[k * 3 + 1] = H[k]; pos[k * 3 + 2] = y;
+                pos[k * 3] = -x; pos[k * 3 + 1] = H[k]; pos[k * 3 + 2] = y;
                 uvs[k * 2] = x / W; uvs[k * 2 + 1] = y / HH;
             }
         }
-        // Normal of the first triangle (a, b, d): (a − b) × (d − b), Y component.
-        const b = 3, d = (nx + 1) * 3;
-        const ax = pos[0] - pos[b], az = pos[2] - pos[b + 2];
-        const qx = pos[d] - pos[b], qz = pos[d + 2] - pos[b + 2];
-        let swap = (az * qx - ax * qz) < 0;
-        let idx = Terrain3D.gridIndices(nx, ny, swap);
-        const normals = new Float32Array(pos.length);
-        BABYLON.VertexData.ComputeNormals(pos, idx, normals);
-        if (normals[1] < 0) {
-            swap = !swap;
-            idx = Terrain3D.gridIndices(nx, ny, swap);
-            BABYLON.VertexData.ComputeNormals(pos, idx, normals);
+        let idx = Terrain3D.gridIndices(nx, ny, false);
+        let nr = Terrain3D.computeNormals(pos, idx);
+        if (nr.up < 0) {
+            idx = Terrain3D._reverseWinding(idx);
+            nr = Terrain3D.computeNormals(pos, idx);
         }
-        this._swap = swap;   // same winding — for the ring
-
-        const mesh = new BABYLON.Mesh('terrain', this.scene);
-        const vd = new BABYLON.VertexData();
-        vd.positions = pos;
-        vd.indices = idx;
-        vd.normals = normals;
-        vd.uvs = uvs;
-        vd.applyToMesh(mesh, false);
-        mesh.receiveShadows = true;
-        mesh.isPickable = false;
-        mesh.freezeWorldMatrix();
-        mesh.material = this.material;
-        this.mesh = mesh;
+        this._swap = nr.up < 0;   // the ring reuses the verdict
+        this.mesh = this._makeMesh('terrain', pos, nr.normals, uvs, idx, this.material);
         this.triangles = idx.length / 3;
-        this.meshes.push(mesh);
+        this.meshes.push(this.mesh);
     }
 
     // Ground ring around the location: pure noise, cell RING_CELL. The hole in it is the location
@@ -233,7 +255,7 @@ class Terrain3D {
         for (let j = 0; j < ny; j++) {
             for (let i = 0; i < nx; i++) {
                 const k = j * nx + i, x = x0 + i * cell, y = y0 + j * cell;
-                positions[k * 3] = x; positions[k * 3 + 1] = this.terrainNoise(x, y) - 1; positions[k * 3 + 2] = y;
+                positions[k * 3] = -x; positions[k * 3 + 1] = this.terrainNoise(x, y) - 1; positions[k * 3 + 2] = y;
                 uvs[k * 2] = x / W; uvs[k * 2 + 1] = y / H;
             }
         }
@@ -246,35 +268,55 @@ class Terrain3D {
                 const cx = x0 + (i + 0.5) * cell, cy = y0 + (j + 0.5) * cell;
                 if (inside(cx, cy) && inside(cx - cell, cy - cell) && inside(cx + cell, cy + cell)) continue;
                 const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-                if (this._swap) indices.push(a, d, b, a, c, d); else indices.push(a, b, d, a, d, c);
+                indices.push(a, b, d, a, d, c);   // map order; reversed below with the rest
             }
         }
-        const normals = new Float32Array(positions.length);
-        BABYLON.VertexData.ComputeNormals(positions, indices, normals);
-        const mesh = new BABYLON.Mesh('terrainOuter', this.scene);
-        const vd = new BABYLON.VertexData();
-        vd.positions = positions;
-        vd.indices = indices;
-        vd.normals = normals;
-        vd.uvs = uvs;
-        vd.applyToMesh(mesh, false);
-        mesh.isPickable = false;
-        mesh.receiveShadows = true;
-        mesh.freezeWorldMatrix();
-        mesh.material = this.outerMaterial;
-        this.outer = mesh;
-        this.meshes.push(mesh);
+        let idx = new Uint32Array(indices);
+        let nr = Terrain3D.computeNormals(positions, idx);
+        if (nr.up < 0) { idx = Terrain3D._reverseWinding(idx); nr = Terrain3D.computeNormals(positions, idx); }
+        this.outer = this._makeMesh('terrainOuter', positions, nr.normals, uvs, idx, this.outerMaterial);
+        this.meshes.push(this.outer);
+    }
+
+    // Triangle order (a,b,c) -> (a,c,b): the mirror into the PlayCanvas world flips the
+    // screen winding once, so what the map order meant in the right-handed scene is
+    // restored by reversing it here.
+    static _reverseWinding(idx) {
+        const out = new Uint32Array(idx.length);
+        for (let t = 0; t < idx.length; t += 3) { out[t] = idx[t]; out[t + 1] = idx[t + 2]; out[t + 2] = idx[t + 1]; }
+        return out;
+    }
+
+    // pc.Mesh + entity + mesh instance in the world layer, static, receives shadows.
+    _makeMesh(name, pos, normals, uvs, idx, material) {
+        const mesh = new pc.Mesh(this.app.graphicsDevice);
+        mesh.setPositions(pos);
+        mesh.setNormals(normals);
+        mesh.setUvs(0, uvs);
+        mesh.setIndices(idx);
+        mesh.update(pc.PRIMITIVE_TRIANGLES);
+        const node = new pc.Entity(name);
+        this.view.root.addChild(node);
+        this.entities.push(node);
+        const mi = new pc.MeshInstance(mesh, material, node);
+        mi.receiveShadow = true;
+        mi.castShadow = false;
+        node.addComponent('render', { layers: [pc.LAYERID_WORLD] });
+        node.render.meshInstances = [mi];   // the layer registration comes with the component
+        return mesh;
     }
 
     dispose() {
-        for (const m of this.meshes) { try { m.dispose(false, false); } catch (e) { /* ok */ } }
+        for (const node of this.entities) { try { node.destroy(); } catch (e) { /* ok */ } }
+        this.entities = [];
+        for (const m of this.meshes) { try { m.destroy(); } catch (e) { /* ok */ } }
         this.meshes = [];
         this.mesh = null;
         this.outer = null;
         for (const mat of [this.material, this.outerMaterial]) {
-            if (mat) { try { mat.dispose(false, false); } catch (e) { /* ok */ } }
+            if (mat) { try { mat.destroy(); } catch (e) { /* ok */ } }
         }
-        if (this.texture) { try { this.texture.dispose(); } catch (e) { /* ok */ } this.texture = null; }
+        if (this.texture) { try { this.texture.destroy(); } catch (e) { /* ok */ } this.texture = null; }
     }
 }
 

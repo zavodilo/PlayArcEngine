@@ -7,8 +7,8 @@
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
-//  npx takes it from the npm cache (the first run downloads it). Babylon types —
-//  libs/babylon.d.ts, own declarations — globals.d.ts. None of this goes into the archive.
+//  npx takes it from the npm cache (the first run downloads it). PlayCanvas types —
+//  libs/playcanvas.d.ts, own declarations — globals.d.ts. None of this goes into the archive.
 //
 //  Tests: tests/*.test.mjs — logic without 3D: Store, Terrain3D.heightAt, the asset
 //  scanner, the editor's writing of Constants.js and Objects.js (_utils/editor/save.mjs),
@@ -26,7 +26,7 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
-  { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit', shell: true }) },
 ];
 
 const only = ['--types', '--tests'].filter(f => process.argv.includes(f));

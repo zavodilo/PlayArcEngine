@@ -3,8 +3,13 @@
 // objects — models from Objects.js (LOCATION_OBJECTS), placed by the editor.
 // Shared by the game (main.js) and the editor (_utils/editor/lab.js): both call
 // update(dt) every frame — part spin of models (def.anim). The game creates its own
-// objects in location.view.scene and registers them with World3D.addObject(location.view,
-// mesh, 'actor' | 'prop'); put them on the ground via location.terrain.heightAt(x, y).
+// objects in the view (World3D.addObject(location.view, entity, 'actor' | 'prop')) and
+// puts them on the ground via location.terrain.heightAt(x, y).
+//
+// Objects are pc.Entity trees; rec.mesh is the ROOT ENTITY of a built model (the old
+// root mesh's role). Placement mirrors map coordinates into the PlayCanvas world
+// (skill world3d, §Coordinates): position (-x, ground+h, y), rotation — a quaternion
+// built from the map euler angles (World3D.rotQuat), scale — as authored.
 
 class Location3D {
     // opts: { assetBase?: '' — game (paths from index.html) | '/' — editor (from the server root),
@@ -19,9 +24,13 @@ class Location3D {
         this._groundIndex = -1;
         this.buildTerrain();
         const models = (this.opts.objects || []).map(def => this.addObject(def).loaded);
-        // Ready — the ground texture and object models have arrived (or were not found) and the scene shaders are built.
+        // Ready — the ground texture and object models have arrived (or were not found) and
+        // the first frame with them has been drawn.
         this.ready = Promise.all([this.loadGround()].concat(models))
-            .then(() => new Promise(resolve => this.view.scene.executeWhenReady(() => resolve(undefined))));
+            .then(() => new Promise(resolve => {
+                World3D.renderFrame();
+                setTimeout(() => resolve(undefined), 0);
+            }));
     }
 
     get width() { return Math.max(64, (typeof LOCATION_WIDTH !== 'undefined') ? LOCATION_WIDTH : 2048); }
@@ -43,7 +52,7 @@ class Location3D {
     // --- Location objects -----------------------------------------------------------
 
     // LOCATION_OBJECTS record -> object: { def, mesh, error, loaded }. The record
-    // is returned immediately; the mesh appears once the model finishes loading (loaded —
+    // is returned immediately; the entity appears once the model finishes loading (loaded —
     // a promise). No file — an object without a mesh (error), the scene doesn't crash.
     // def: { name, model, kind, x, y, h, rot, scale, anim?, clip? } — the fields are live: edit +
     // placeObject; anim and clip are read every frame (spinPart, playClip).
@@ -52,10 +61,10 @@ class Location3D {
         /** @type {LocationObject} */
         const rec = { def, mesh: null, error: null, loaded: null };
         this.objects.push(rec);
-        rec.loaded = Model3D.load((this.opts.assetBase || '') + def.model, this.view.scene).then((model) => {
+        rec.loaded = Model3D.load((this.opts.assetBase || '') + def.model, this.view).then((model) => {
             if (this.objects.indexOf(rec) < 0 || !this.view) return rec;   // removed while loading
-            rec.mesh = Model3D.build(model, this.view.scene, { name: def.name || 'object' });
-            rec.mesh.metadata = { locationObject: rec };
+            rec.mesh = Model3D.build(model, this.view, { name: def.name || 'object' });
+            /** @type {ArcNode} */ (rec.mesh).meta = { locationObject: rec };
             World3D.addObject(this.view, rec.mesh, def.kind);
             this.placeObject(rec);
             return rec;
@@ -67,9 +76,9 @@ class Location3D {
         return rec;
     }
 
-    // Mesh — from the def fields: position on the ground + h; rot — [x, y, z] degrees (y — heading
-    // on the map, like heading: rotation.y = −y; x, z — tilt); scale — [x, y, z]. An old
-    // record with numbers (rot — heading only, scale — uniform) is also read.
+    // Entity — from the def fields: position on the ground + h; rot — [x, y, z] degrees (y — heading
+    // (0 — along +x, 90 — down the map), x, z — tilt); scale — [x, y, z]. An old
+    // record with numbers (rot — heading only, scale — a number) is also read.
     /** @param {LocationObject} rec */
     placeObject(rec) {
         const m = rec.mesh, d = rec.def;
@@ -78,10 +87,10 @@ class Location3D {
         const r = Array.isArray(d.rot) ? d.rot : [0, d.rot, 0];
         const s = Array.isArray(d.scale) ? d.scale : [d.scale, d.scale, d.scale];
         const k = (v) => (Number(v) > 0 ? Number(v) : 1);
-        m.position.set(x, (this.terrain ? this.terrain.heightAt(x, y) : 0) + (Number(d.h) || 0), y);
-        m.rotationQuaternion = null;   // a quaternion (the gizmo may set one) would override rotation
-        m.rotation.set((Number(r[0]) || 0) * D, -(Number(r[1]) || 0) * D, (Number(r[2]) || 0) * D);
-        m.scaling.set(k(s[0]), k(s[1]), k(s[2]));
+        m.setPosition(-x, (this.terrain ? this.terrain.heightAt(x, y) : 0) + (Number(d.h) || 0), y);
+        // Map euler angles (right-handed tradition) -> a quaternion of the mirrored world.
+        m.setRotation(World3D.rotQuat((Number(r[0]) || 0) * D, -(Number(r[1]) || 0) * D, (Number(r[2]) || 0) * D));
+        m.setLocalScale(k(s[0]), k(s[1]), k(s[2]));
     }
 
     placeObjects() {
@@ -117,33 +126,34 @@ class Location3D {
     // center (origin from Blender) about its own axis, axis — 'x' | 'y' | 'z', with a minus — the
     // opposite end; speed — rpm; dir — 'cw' | 'ccw', clockwise/counterclockwise when viewed from
     // the axis end. Animation removed or part changed — the previous part returns to its place.
+    // The spin root is the part entity the builder put at the node origin (Model3D.build).
     /** @param {LocationObject} rec @param {number} dt */
     spinPart(rec, dt) {
         const a = rec.def.anim;
         const name = a && rec.mesh ? String(a.part || '') : '';
         let s = rec.spin;
         if (s && (s.name !== name || s.root !== rec.mesh)) {
-            if (s.mesh && !s.mesh.isDisposed()) {
-                s.mesh.rotationQuaternion = null;
-                s.mesh.setPivotPoint(BABYLON.Vector3.Zero());
-            }
+            if (s.mesh) s.mesh.setRotation(pc.Quat.IDENTITY);
             s = rec.spin = null;
         }
         if (!name) return;
         if (!s) {
-            const mesh = rec.mesh.getChildMeshes(true).find(m => m.metadata && m.metadata.part === name) || null;
-            s = rec.spin = { name, root: rec.mesh, mesh, angle: 0, axis: new BABYLON.Vector3(), q: new BABYLON.Quaternion() };
-            if (mesh) mesh.setPivotPoint(BABYLON.Vector3.FromArray(mesh.metadata.pivot));
+            const hits = rec.mesh.find((n) => {
+                const md = /** @type {ArcNode} */ (n).meta;
+                return !!md && md.part === name;
+            });
+            const mesh = /** @type {ArcNode} */ ((hits && hits[0]) || null);
+            s = rec.spin = { name, root: rec.mesh, mesh, angle: 0, axis: new pc.Vec3() };
         }
         if (!s.mesh) return;
-        const axis = String(a.axis || 'y'), dirs = s.mesh.metadata.axes;
+        const axis = String(a.axis || 'y'), dirs = /** @type {ArcNode} */ (s.mesh).meta.axes;
         const v = dirs[axis.slice(-1)] || dirs.y, sign = axis[0] === '-' ? -1 : 1;
         s.axis.set(v[0] * sign, v[1] * sign, v[2] * sign);
-        // The scene is right-handed: a positive angle is counterclockwise from the axis end.
+        // The scene is mirrored: a positive map angle (counterclockwise from the axis end)
+        // is a negative turn about the mirrored axis.
         const turn = Math.max(0, Number(a.speed) || 0) * Math.PI / 30 * (a.dir === 'ccw' ? 1 : -1);
         s.angle = (s.angle + turn * dt) % (2 * Math.PI);
-        BABYLON.Quaternion.RotationAxisToRef(s.axis, s.angle, s.q);
-        s.mesh.rotationQuaternion = s.q;
+        s.mesh.setRotation(new pc.Quat().setFromAxisAngle(s.axis, -s.angle));
     }
 
     /** @param {LocationObject} rec */
@@ -186,7 +196,7 @@ class Location3D {
     }
 
     dispose() {
-        this.objects = [];   // meshes and materials die with the scene
+        this.objects = [];   // entities and materials die with the view
         if (this.terrain) this.terrain.dispose();
         this.terrain = null;
         if (this.view) this.view.dispose();

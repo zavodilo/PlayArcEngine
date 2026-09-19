@@ -23,7 +23,7 @@ export const EXTRA_REFS = [];
 export const CODE_FILES = [
   'index.html',
   'js/Constants.js', 'js/Objects.js', 'js/UILayout.js', 'js/World3D.js', 'js/Terrain3D.js', 'js/CameraControl.js', 'js/Model3D.js', 'js/Gltf3D.js', 'js/Location3D.js', 'js/Debug3D.js', 'js/UI.js', 'js/Game.js', 'js/main.js',
-  'libs/simplex-noise.js', 'libs/babylon.js', 'libs/babylonjs.loaders.min.js',
+  'libs/simplex-noise.js', 'libs/playcanvas.min.js',
 ];
 
 // What definitely does not go into the build.

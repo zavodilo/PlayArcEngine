@@ -27,7 +27,7 @@ function startGame() {
     if (typeof SimplexNoise === 'undefined') { showBootError('Нет libs/simplex-noise.js'); return; }
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('world3d'));
     updateLoadingProgress(40);
-    if (!World3D.init(canvas)) { showBootError('3D недоступен: нет libs/babylon.js или WebGL'); return; }
+    if (!World3D.init(canvas)) { showBootError('3D недоступен: нет libs/playcanvas.min.js или WebGL'); return; }
 
     const location = new Location3D({ objects: typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : [] });
     const camera = new CameraController(location.view, {
@@ -41,15 +41,19 @@ function startGame() {
     console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + '.');
     updateLoadingProgress(70);
 
+    // The frame loop is ours (the engine draws on demand): game logic, location,
+    // camera — then one World3D.renderFrame(), which steps and draws the app.
     let last = performance.now();
-    World3D.engine.runRenderLoop(() => {
+    const loop = () => {
         const now = performance.now(), dt = (now - last) / 1000;
         last = now;
         game.update(Math.min(0.1, dt));
         location.update(dt);
         camera.update(dt);
         World3D.renderFrame();
-    });
+        requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
     window.addEventListener('resize', () => World3D.resize());
     location.ready.then(hideLoader);
 }

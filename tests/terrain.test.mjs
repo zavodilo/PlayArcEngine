@@ -1,5 +1,5 @@
-// Terrain3D.heightAt: the height under a point is exactly the one the mesh draws. Babylon is
-// a stub: the height field and the triangle choice are checked, not the picture.
+// Terrain3D.heightAt: the height under a point is exactly the one the mesh draws. PlayCanvas
+// is a stub: the height field and the triangle choice are checked, not the picture.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadScripts, stub } from './browser-scripts.mjs';
@@ -8,9 +8,9 @@ const SCRIPTS = ['js/Constants.js', 'libs/simplex-noise.js', 'js/Terrain3D.js'];
 const EPS = 1e-3;   // the height field is a Float32Array
 
 function makeTerrain(noise = {}, cfg = {}, globals = {}) {
-  const page = loadScripts(SCRIPTS, { BABYLON: stub(), World3D: stub(), ...globals });
+  const page = loadScripts(SCRIPTS, { pc: stub(), World3D: stub(), ...globals });
   const Terrain3D = page.get('Terrain3D');
-  return new Terrain3D({ scene: stub() }, {
+  return new Terrain3D(stub(), {
     worldW: 512, worldH: 384, cell: 8,
     noise: { amp: 66, scale: 800, seed: 4, base: 0, ...noise },
     ...cfg,

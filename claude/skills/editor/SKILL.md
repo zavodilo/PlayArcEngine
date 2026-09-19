@@ -19,7 +19,7 @@ game: it does not go into the build (`BUILD_EXCLUDE`), and the game knows nothin
 |---|---|
 | `server.mjs` | static files from the project ROOT (no-store) + `GET /api/status`, `POST /api/save-constants`, `/api/save-objects`, `/api/save-ui`, `/api/pick-model`, `/api/import-model`. `EDITOR_API_VERSION` |
 | `save.mjs` | writing without HTTP: `patchScalar`, `saveConstants(root, changes)`, `formatObjects`, `saveObjects(root, objects)`, `formatUI`, `saveUI(root, elements)` (skill `ui`), backups, `ERRORS`/`failure`, `isModelPath`; covered by `tests/editor-save.test.mjs` and `tests/ui.test.mjs` |
-| `index.html` | header with the language switch `#lang-switch`, view toolbar, canvas `#view-canvas`, right pane with tabs `#pane-tabs` (`.pane-panel[data-tab]`: settings, objects, ui); script order: `i18n.js`, `schema.js`, `loader.js`, kit modules (`/libs/babylonjs.loaders.min.js`, `/js/Objects.js`, `/js/UILayout.js`, `/js/World3D.js` … `/js/Model3D.js`, `/js/Gltf3D.js`, `/js/Location3D.js`, `/js/UI.js`; no `Game.js` — the editor does not run the game), `inspector.js`, `objects-panel.js`, `ui-panel.js`, `lab.js`, `main.js` |
+| `index.html` | header with the language switch `#lang-switch`, view toolbar, canvas `#view-canvas`, right pane with tabs `#pane-tabs` (`.pane-panel[data-tab]`: settings, objects, ui); script order: `i18n.js`, `schema.js`, `loader.js`, kit modules (`/libs/playcanvas.min.js`, `/js/Objects.js`, `/js/UILayout.js`, `/js/World3D.js` … `/js/Model3D.js`, `/js/Gltf3D.js`, `/js/Location3D.js`, `/js/UI.js`; no `Game.js` — the editor does not run the game), `inspector.js`, `objects-panel.js`, `ui-panel.js`, `lab.js`, `main.js` |
 | `i18n.js` | `I18N`: language (EN by default, choice in `localStorage` `arcengine.editor.lang`), dictionaries `STRINGS.en/ru`, `t(key, params)`, `pick({ en, ru })`, markup via `data-i18n*`, `lang-changed` event |
 | `loader.js` | fetches `/js/Constants.js`, replaces `^const` with `var`, runs it through indirect `eval` — constants become writable `window` properties |
 | `schema.js` | `KIT_SCHEMA` — inspector groups and fields, texts `{ en, ru }`; the client's `EDITOR_API_VERSION` |
@@ -87,12 +87,13 @@ position, angles and speed 0.1, scale 0.001. An old server process silently drop
   `not_binary`, `not_glb`); a text `.gltf` with external files is not imported. Cancel — `code: 'cancelled'`. Not Windows — `code: 'unsupported'`, the client
   picks a file with `<input type=file>` and sends the bytes to `POST /api/import-model?name=<file>`.
   A new object appears at the frame center on the ground (`camera.groundFocus()`).
-- Gizmo — `BABYLON.GizmoManager` (utility layer), modes on the toolbar `#gizmo-modes` and
+- Gizmo — the engine's `TranslateGizmo`/`RotateGizmo`/`ScaleGizmo` on a shared gizmo layer
+  (`pc.Gizmo.createLayer`), modes on the toolbar `#gizmo-modes` and
   keys 1/2/3: move (axes + ground-plane square), rotate (X/Y/Z rings, world axes), scale
-  (per axis, center — uniform). Gizmo materials are unlit (`emissiveColor`): lit ones get
-  quantized by the toon plugin. The gizmo needs the SCENE's pointer events:
-  `ObjectsPanel.init` calls `scene.attachControl()` (View3D turns them off). The camera
-  ignores a press on the gizmo — `camera.ignorePointer = (e) => gizmoHit(e)`: `isHovered` plus
+  (per axis, center — uniform), world axes (`GIZMOSPACE_WORLD`). Drag steps come from the
+  gizmo events (`TransformGizmo.EVENT_TRANSFORMSTART/MOVE/END`). The camera
+  ignores a press on the gizmo — `camera.ignorePointer = (e) => gizmoHit(e)`: a Picker probe
+  of the gizmo layer plus
   a direct pick of the utility layer (hover does not update without mouse movement). Moving
   along X/Z keeps `h` (the object follows the terrain), along Y — changes `h`. Gizmo rotation
   writes the mesh `rotation` (or `rotationQuaternion` if set) — angles are taken into `rot`,
@@ -133,9 +134,10 @@ position, angles and speed 0.1, scale 0.001. An old server process silently drop
   `/_utils/editor/`, a relative `assets/…` would resolve there.
 - Camera keys do not work while focus is in an inspector field — `lab.js` drops focus on a
   press on the view.
-- The Babylon frame is rendered every tick (`preserveDrawingBuffer: false`): a "render on
-  flag" gate shows garbage from the buffer.
-- Without `scene.attachControl()` the gizmo is drawn but cannot be dragged; without
+- The frame is rendered every tick (the engine draws on demand): a "render on flag"
+  gate leaves the previous picture stale.
+- Without the app input systems (the engine application) the gizmo is drawn but cannot be
+  dragged; without
   `camera.ignorePointer` LMB on an arrow also orbits the free camera.
 - A comment with a quoted `'assets/…'` is a false reference for the builder's asset scanner
   (it reads comments too): the build fails on a "missing asset". The `Objects.js` header

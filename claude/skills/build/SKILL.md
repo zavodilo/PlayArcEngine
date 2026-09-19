@@ -61,9 +61,10 @@ via JSDoc and compiles nothing. Two programs — the game and the editor have di
 | `_utils/editor/tsconfig.json` | `_utils/editor/*.js` + kit modules without `main.js` (the editor has its own) |
 
 Mode: `strict` without `noImplicitAny`, `strictNullChecks`, `useUnknownInCatchVariables` — it
-catches typos in fields and methods and Babylon calls that do not match the API, without
-demanding JSDoc on every parameter. `libs/babylon.d.ts` — types for exactly Babylon 9.26:
-upgrading `babylon.js` = a new file (`cdn.jsdelivr.net/npm/babylonjs@<version>/babylon.d.ts`).
+catches typos in fields and methods and engine calls that do not match the API, without
+demanding JSDoc on every parameter. `libs/playcanvas.d.ts` — types for exactly the PlayCanvas
+build in `libs/playcanvas.min.js`: upgrading the engine = a new pair of files
+(`npm pack playcanvas@<version>`, take `build/playcanvas.min.js` and `build/playcanvas.d.ts`).
 `.mjs` (tools, editor server) is not checked by tsc — those have tests.
 
 Pitfalls:
@@ -101,7 +102,7 @@ skills from there would never reach users).
 
 `browser-scripts.mjs`: `loadScripts(files, globals)` runs classic scripts in one `node:vm`
 context (like `<script>`), `get('Name')` fetches a top-level `const`/`class`; `stub()` — a
-stub for `BABYLON`/`World3D` when a constructor builds meshes along the way. Objects from the
+stub for `pc`/`World3D` when a constructor builds meshes along the way. Objects from the
 context belong to another realm: copy them for `assert.deepEqual` (`{ ...obj }`, `JSON`).
 Files go into temp folders, `after()` removes them.
 
