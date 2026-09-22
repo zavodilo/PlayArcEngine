@@ -74,6 +74,8 @@ interface LocationObjectDef {
     anim?: { part: string; axis: string; speed: number; dir: string };
     /** Looped animation clip of a glTF model ('idle'); none — the rest pose. */
     clip?: string;
+    /** Procedural3D kind used when `model` is missing/unreadable ('tree' | 'rock' | …). */
+    fallback?: string;
 }
 
 /** Location object: Location3D.objects. */
@@ -93,5 +95,8 @@ interface LocationObject {
     } | null;
     /** The clip Location3D.playClip last asked for and the model root it asked. */
     clip?: string;
+    /** True when the model file was missing and Procedural3D built a stand-in. */
+    fallbackUsed?: boolean;
     clipRoot?: pc.Entity | null;
 }
+

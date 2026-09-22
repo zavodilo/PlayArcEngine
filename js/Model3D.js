@@ -60,6 +60,7 @@ const Model3D = {
                 mat.name = root.name + '/' + m.name;
                 const g = Model3D._gamma(m.color);
                 mat.diffuse = new pc.Color(g[0], g[1], g[2]);
+                if (m.texture) Model3D._attachTexture(mat, m.texture, view);
                 mats[i] = mat;
             }
             return mats[i];
@@ -120,6 +121,46 @@ const Model3D = {
         return n;
     },
 
+    // A RelativeFilename like "..\\textures\\bark.jpg" or "tex/bark.jpg" -> a path under the
+    // game root when it lives inside assets/; null when it points outside (embedded only).
+    _normRel(rel) {
+        if (!rel) return null;
+        const clean = String(rel).replace(/\\+/g, '/');
+        const m = /(?:^|\/)(assets\/.+)$/i.exec(clean);
+        if (m) return m[1];
+        return /^(?!\.\.\/)/.test(clean) ? 'assets/models/' + clean.split('/').pop() : null;
+    },
+
+    // Diffuse texture: embedded bytes win; otherwise the file next to the model under
+    // assets/. Loaded in the background: the mesh renders with its flat color first and
+    // gets the map when the image arrives (a missing file warns and keeps the color).
+    _attachTexture(mat, tex, view) {
+        const done = (blob) => {
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                const t = new pc.Texture(view.world.app.graphicsDevice, {
+                    width: img.width, height: img.height,
+                    minFilter: pc.FILTER_LINEAR_MIPMAP_LINEAR, magFilter: pc.FILTER_LINEAR,
+                    addressU: pc.ADDRESS_REPEAT, addressV: pc.ADDRESS_REPEAT
+                });
+                t.name = mat.name + '-diffuse';
+                t.setSource(img);
+                mat.diffuseMap = t;
+                mat.diffuse = new pc.Color(1, 1, 1);
+                mat.update();
+                URL.revokeObjectURL(url);
+            };
+            img.onerror = () => { console.warn('Model3D: текстура не читается: ' + (tex.path || 'embedded')); URL.revokeObjectURL(url); };
+            img.src = url;
+        };
+        if (tex.bytes) { done(new Blob([tex.bytes], { type: 'image/jpeg' })); return; }
+        if (tex.path) {
+            fetch(tex.path).then(r => (r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)))).then(done)
+                .catch(e => console.warn('Model3D: нет файла текстуры ' + tex.path + ' (' + e.message + ')'));
+        }
+    },
+
     // Linear -> sRGB, like Babylon's toGammaSpace on the file's linear colors.
     _gamma(c) {
         const f = (v) => Math.pow(Math.max(0, Math.min(1, v)), 1 / 2.2);
@@ -164,6 +205,30 @@ const Model3D = {
         const kind = (id) => (objects.has(id) ? objects.get(id).name : '');
         const nameOf = (n) => String(n.props[1]).split('\0')[0];   // "house\0\x01Model" -> "house"
 
+        // Textures (feedback: bare FBX colors made pines/rocks look worse than procedural
+        // toon trees). FBX 7.x: a Video node carries RelativeFilename and, when embedded,
+        // the Content blob; a Texture node wraps a Video; an OP connection binds a Texture
+        // to a material property (DiffuseColor/Diffuse). Embedded bytes win over the path.
+        const videos = new Map();
+        for (const [id, n] of objects) {
+            if (n.name !== 'Video') continue;
+            const p = this._props70(n);
+            const one = (k) => { const v = p[k]; return Array.isArray(v) ? v[0] : v; };  // _props70 gives value arrays
+            const rel = String(one('RelativeFilename') || one('RelativePath') || '').replace(/\\/g, '/');
+            const content = one('Content');
+            videos.set(id, { rel, bytes: content && content.length ? content : null });
+        }
+        const texToVideo = new Map();
+        const matTex = new Map();      // material object id -> { rel, bytes, prop }
+        for (const c of (this._child(tree, 'Connections') || { nodes: [] }).nodes) {
+            if (c.name !== 'C') continue;
+            if (c.props[0] === 'OO' && videos.has(c.props[1])) texToVideo.set(c.props[2], c.props[1]);
+            if (c.props[0] === 'OP' && (String(c.props[3]) === 'DiffuseColor' || String(c.props[3]) === 'Diffuse')) {
+                const vid = texToVideo.get(c.props[1]);
+                if (vid) matTex.set(c.props[2], videos.get(vid));
+            }
+        }
+
         const worlds = new Map();
         const worldOf = (id) => {
             let m = worlds.get(id);
@@ -187,7 +252,11 @@ const Model3D = {
                 const n = objects.get(id), p = n ? this._props70(n) : {};
                 const c = p.DiffuseColor || p.Diffuse || [0.8, 0.8, 0.8];
                 matIndex.set(id, model.materials.length);
-                model.materials.push({ name: n ? nameOf(n) : 'default', color: [c[0], c[1], c[2]] });
+                const tex = matTex.get(id);
+                model.materials.push({
+                    name: n ? nameOf(n) : 'default', color: [c[0], c[1], c[2],],
+                    texture: tex ? { path: Model3D._normRel(tex.rel), bytes: tex.bytes || null } : null
+                });
             }
             return matIndex.get(id);
         };

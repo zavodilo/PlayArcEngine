@@ -41,6 +41,18 @@ const Debug3D = {
 
     LIMITS: { meshTriangles: 300000, sampleTriangles: 20000 },
 
+    // True on software rasterizers (SwiftShader/llvmpipe/Software): headless sandboxes and
+    // ancient GPUs. Games use it for VISUAL LEVELS (feedback: heavy GLB do not run in
+    // headless): lower shadow map, skip hulls/ink, procedural stand-ins instead of GLB.
+    softwareGL() {
+        const W = /** @type {any} */ (window).World3D;
+        const gl = W && W.app && W.app.graphicsDevice && /** @type {any} */ (W.app.graphicsDevice).gl;
+        if (!gl || !gl.getExtension) return false;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        const renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+        return /swiftshader|llvmpipe|softpipe|software|angle \(google, vulkan.*swiftshader/i.test(renderer);
+    },
+
     // --- Lint: pure parts (tests/debug3d.test.mjs) ----------------------------------------
 
     // Share of triangles whose winding normal points against the vertex normals (0..1), over at
