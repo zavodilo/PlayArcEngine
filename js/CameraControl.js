@@ -49,6 +49,10 @@ class CameraController {
         this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'touch', anchor }
         this._pinch = null;
         this._keys = new Set();
+        // A game that drives its own object with WASD / arrows sets this to false and the
+        // controller stops eating the flight keys (they stay free for the game's listener).
+        // RMB orbit, the wheel and R (home) are not affected.
+        this.flightKeys = true;
         this._zoomAnchor = null;       // zoom to cursor: { px, py, x, y, h } — ground point under the cursor
         this._shakeUntil = 0;
         this._shakeAmp = 0;
@@ -109,8 +113,11 @@ class CameraController {
         this._apply();
     }
 
-    // Target onto the ground point (x, y): flight height is dropped.
-    lookAt(x, y) {
+    // Target onto the ground point (x, y): flight height is dropped. With an optional height
+    // h the look-at point goes above the ground instead (a game framing a tall prop calls
+    // lookAt(x, y, h) once at boot; the lift survives because following is what decays it).
+    lookAt(x, y, h) {
+        if (h != null) { this._setTarget3(x, y, h); return; }
         this.target.x = x;
         this.target.y = y;
         this.lift = 0;
@@ -485,7 +492,7 @@ class CameraController {
         const t = e.target;
         if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
-        if (CameraController.FLY_KEYS[e.code]) {
+        if (this.flightKeys && CameraController.FLY_KEYS[e.code]) {
             if (down) this._keys.add(e.code); else this._keys.delete(e.code);
             e.preventDefault();
             return;
@@ -499,7 +506,7 @@ class CameraController {
         dt = Math.min(0.1, Math.max(0, dt || 0));
         const c = this.c, f60 = dt * 60;
 
-        if (this._keys.size) {
+        if (this.flightKeys && this._keys.size) {
             const K = CameraController.FLY_KEYS;
             let fwd = 0, right = 0, up = 0;
             for (const code of this._keys) { fwd += K[code][0]; right += K[code][1]; up += K[code][2]; }

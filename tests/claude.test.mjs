@@ -50,7 +50,13 @@ test('claude/launch.json: game и editor запускают серверы на�
   }
 });
 
-test('.claude/skills и .agents/skills — генерированные копии канона (tools/sync-skills.mjs)', () => {
+// A project scaffolded with --no-skills ships the canon (claude/skills) but deliberately no
+// generated agent copies: there is nothing to compare, so skip instead of failing its check.mjs.
+const NO_AGENT_COPIES = !fs.existsSync(path.join(ROOT, '.claude', 'skills'))
+    ? 'копии агентов не созданы (create-arcengine --no-skills)'
+    : false;
+
+test('.claude/skills и .agents/skills — генерированные копии канона (tools/sync-skills.mjs)', { skip: NO_AGENT_COPIES }, () => {
     const r = spawnSync(process.execPath, ['tools/sync-skills.mjs', '--check'], { cwd: ROOT, encoding: 'utf8' });
     assert.equal(r.status, 0, (r.stderr || '') + (r.stdout || ''));
     for (const name of SKILLS.map(rel => rel.split('/')[2])) {

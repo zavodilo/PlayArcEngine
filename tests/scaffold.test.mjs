@@ -12,8 +12,13 @@ const cli = (args) => spawnSync(process.execPath, ['tools/create-arcengine.mjs',
     { cwd: ROOT, encoding: 'utf8' });
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'arc-scaffold-'));
+// create-arcengine.mjs does not copy scaffold/ into a generated game, so these tests have
+// nothing to run on there: skip instead of failing a game's check.mjs with ENOENT.
+const NO_SCAFFOLD = !fs.existsSync(path.join(ROOT, 'scaffold', 'starters'))
+    ? 'scaffold/ не поставляется в собранные игры (create-arcengine исключает его)'
+    : false;
 
-test('скаффолд: survival-стартер копирует набор, оверлей и скиллы агентов', () => {
+test('скаффолд: survival-стартер копирует набор, оверлей и скиллы агентов', { skip: NO_SCAFFOLD }, () => {
     const dir = tmp();
     const r = cli([dir, '--starter', 'survival']);
     assert.equal(r.status, 0, r.stderr);
@@ -35,20 +40,22 @@ test('скаффолд: survival-стартер копирует набор, о�
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('скаффолд: empty + --no-skills — без копий агентов, сцена пуста', () => {
+test('скаффолд: empty + --no-skills — без копий агентов, сцена пуста', { skip: NO_SCAFFOLD }, () => {
     const dir = tmp();
     const r = cli([dir, '--starter', 'empty', '--no-skills']);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!fs.existsSync(path.join(dir, '.agents')), '.agents не создан с --no-skills');
     assert.ok(!fs.existsSync(path.join(dir, 'AGENTS.md')));
     const objects = fs.readFileSync(path.join(dir, 'js/Objects.js'), 'utf8');
-    assert.match(objects, /LOCATION_OBJECTS = \[\]/);
+    // the starter's Objects.js is what the editor's formatter writes (formatObjects([])):
+    // an empty list spans two lines there, so accept whitespace inside the brackets
+    assert.match(objects, /LOCATION_OBJECTS = \[\s*\]/);
     const game = fs.readFileSync(path.join(dir, 'js/Game.js'), 'utf8');
     assert.match(game, /empty starter/);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('скаффолд: непустая цель без --overwrite отклоняется', () => {
+test('скаффолд: непустая цель без --overwrite отклоняется', { skip: NO_SCAFFOLD }, () => {
     const dir = tmp();
     fs.writeFileSync(path.join(dir, 'mine.txt'), 'x');
     const r = cli([dir]);

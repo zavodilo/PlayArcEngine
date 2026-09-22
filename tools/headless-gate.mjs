@@ -25,6 +25,12 @@ const JSON_OUT = jsonArg ? jsonArg.slice(7) : null;
 const WANT_RENDER = args.includes('--render') || args.includes('--all');
 const WANT_VISUAL = args.includes('--visual') || args.includes('--all');
 if (!WANT_RENDER && !WANT_VISUAL) { console.error('headless-gate: pass --render, --visual or --all'); process.exit(1); }
+// The screenshots land next to the report: create that directory up front, or the first
+// page.screenshot() dies with ENOENT long before the report itself is written.
+if (jsonArg) {
+    const fs0 = await import('node:fs');
+    fs0.mkdirSync(path.dirname(path.resolve(JSON_OUT)), { recursive: true });
+}
 
 let puppeteer;
 try {
