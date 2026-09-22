@@ -41,6 +41,9 @@ const rejected = (name, code) => ({ name, ok: false, code, error: ERRORS[code] }
 // Model path: an .fbx or .glb inside assets/, ASCII with no spaces and no . / .. in the segments.
 const MODEL_PATH = /^assets\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.(?:fbx|glb)$/i;
 export const isModelPath = p => MODEL_PATH.test(p) && !p.split('/').some(s => s === '.' || s === '..');
+// Sound path: the same rules, a .wav, .mp3 or .ogg.
+const SOUND_PATH = /^assets[/](?:[A-Za-z0-9_.-]+[/])*[A-Za-z0-9_.-]+[.](?:wav|mp3|ogg)$/i;
+export const isSoundPath = p => SOUND_PATH.test(p) && !p.split('/').some(s => s === '.' || s === '..');
 
 // --- Backups -----------------------------------------------------------------
 
@@ -135,6 +138,11 @@ export const OBJECTS_HEADER = `// Objects.js — location objects: models placed
 //   its origin from Blender), axis — its axis 'x' | 'y' | 'z' (with a minus — the opposite end),
 //   speed — rpm, dir — 'cw' | 'ccw': clockwise/counterclockwise as seen from the end of the axis;
 //   clip — looped animation clip of a .glb model (optional): 'idle', 'run'…
+//   tag — a group name for game code (optional): location.findByTag(tag);
+//   hidden: true — placed but not in the scene until the game calls location.setHidden(rec, false);
+//   sound — a sound standing at the object (optional, Sound3D.js): src — a file from assets/sounds,
+//   volume 0..1, loop: false — once instead of looped, falloffMin — px of full volume around the
+//   object, falloffMax — px, silent from there on (0 or absent — the common AUDIO_FALLOFF_*).
 `;
 
 // A number with fixed precision and no float tails; not a number — null.
@@ -172,7 +180,34 @@ function fmtClip(v) {
   return clip ? `, clip: '${clip}'` : '';
 }
 
-// objects: [{ name, model, kind, x, y, h, rot: [x, y, z], scale: [x, y, z], anim?, clip? }] ->
+// tag: a group name -> the record tail `, tag: '…'`; none — ''.
+function fmtTag(v) {
+  const tag = cleanName(v);
+  return tag ? `, tag: '${tag}'` : '';
+}
+
+// sound: { src, volume?, loop?, falloffMin?, falloffMax? } -> the record tail `, sound: { … }`;
+// no sound — '', invalid — null. Defaults (volume 1, looped, the common radii) are not written.
+function fmtSound(s) {
+  if (s == null) return '';
+  if (typeof s !== 'object' || !isSoundPath(String(s.src || ''))) return null;
+  const parts = [`src: '${s.src}'`];
+  if (s.volume != null) {
+    const volume = fmtFixed(s.volume, 2);
+    if (volume === null || Number(volume) < 0 || Number(volume) > 1) return null;
+    if (Number(volume) !== 1) parts.push(`volume: ${volume}`);
+  }
+  if (s.loop === false) parts.push('loop: false');
+  for (const key of ['falloffMin', 'falloffMax']) {
+    if (s[key] == null) continue;
+    const px = fmtFixed(s[key], 0);
+    if (px === null || Number(px) < 0) return null;
+    if (Number(px) > 0) parts.push(`${key}: ${px}`);
+  }
+  return `, sound: { ${parts.join(', ')} }`;
+}
+
+// objects: [{ name, model, kind, x, y, h, rot: [x, y, z], scale: [x, y, z], anim?, clip?, tag?, hidden?, sound? }] ->
 // { ok, src, count } or a rejection (index — the number of the invalid record).
 export function formatObjects(objects) {
   if (!Array.isArray(objects)) return failure('bad_objects');
@@ -186,10 +221,11 @@ export function formatObjects(objects) {
       rot: fmtTriple(o.rot, 1, r => [0, r, 0], false),
       scale: fmtTriple(o.scale, 3, s => [s, s, s], true),
       anim: fmtAnim(o.anim),
+      sound: fmtSound(o.sound),
     };
     if (Object.values(n).includes(null)) return failure('bad_value', { index: i });
     const kind = o.kind === 'actor' ? 'actor' : 'prop';
-    lines.push(`    { name: '${cleanName(o.name)}', model: '${model}', kind: '${kind}', x: ${n.x}, y: ${n.y}, h: ${n.h}, rot: ${n.rot}, scale: ${n.scale}${n.anim}${fmtClip(o.clip)} },\n`);
+    lines.push(`    { name: '${cleanName(o.name)}', model: '${model}', kind: '${kind}', x: ${n.x}, y: ${n.y}, h: ${n.h}, rot: ${n.rot}, scale: ${n.scale}${n.anim}${fmtClip(o.clip)}${fmtTag(o.tag)}${o.hidden ? ', hidden: true' : ''}${n.sound} },\n`);
   }
   return { ok: true, src: OBJECTS_HEADER + 'const LOCATION_OBJECTS = [\n' + lines.join('') + '];\n', count: lines.length };
 }

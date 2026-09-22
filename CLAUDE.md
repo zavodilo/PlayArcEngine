@@ -24,6 +24,7 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 |---|---|
 | `js/` (`World3D.js`, `Terrain3D.js`, `Location3D.js`, `CameraControl.js`, `Model3D.js`, `Gltf3D.js`, `Procedural3D.js`, `Objects.js`, `Game.js`, `main.js`), объекты в сцене, модели GLB и клипы анимации, свет/тени/toon/контур, константы `CAMERA_*`/`WORLD3D_*`/`TERRAIN_*`/`LOCATION_*` | `claude/skills/world3d/SKILL.md` |
 | ЛЮБОЙ элемент интерфейса игры (текст, счётчик, шкала, кнопка, панель, меню): `js/UI.js`, `js/UILayout.js`, вкладка UI редактора (`ui-panel.js`), новый вид элемента | `claude/skills/ui/SKILL.md` |
+| ЛЮБОЙ звук: эффект, музыка, звук объекта локации, `js/Sound3D.js`, поле `sound` в `Objects.js`, константы `AUDIO_*`, файлы в `assets/sounds` | `claude/skills/sound/SKILL.md` |
 | `_utils/`, редактор, инспектор, вкладка Objects, новая константа в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
 | своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер, thin instances и процедурная расстановка; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
@@ -98,7 +99,8 @@ index.html        холст #world3d, экран загрузки, порядо
 js/               код игры — классические скрипты:
   Constants.js    Store, IS_MOBILE, LOCATION_*, TERRAIN_*, CAMERA_*, WORLD3D_* (грузится первым)
   Objects.js      LOCATION_OBJECTS — объекты локации (модель .fbx/.glb, вид, x/y/h, rot [x,y,z], scale [x,y,z],
-                  anim — вращение части, clip — клип GLB); пишет редактор
+                  anim — вращение части, clip — клип GLB, tag — группа для кода, hidden — скрыт до
+                  setHidden, sound — звук на месте объекта); пишет редактор
   UILayout.js     UI_LAYOUT — раскладка интерфейса игры (id, вид, якорь, x/y, размеры, цвета); пишет редактор
   World3D.js      движок: init/renderFrame, View3D (камера, свет, тени, проекции), cfg(),
                   toon-шейдер ArcToonPlugin, контур рёбер, обводка силуэта, addObject
@@ -111,8 +113,11 @@ js/               код игры — классические скрипты:
                   rec.fallbackUsed)
   Gltf3D.js       модели glTF/GLB: скелет, текстуры, PBR -> StandardMaterial под toon; Clips3D — клипы анимации
                   (Model3D.clips(root).play('run') с плавным переходом)
+  Sound3D.js      звук (Web Audio, без зависимостей): эффекты Sound3D.play(src, opts), музыка music(src),
+                  звук на карте — слышно ОТТУДА, ГДЕ КАМЕРА (update(camera) каждый кадр); область
+                  слышимости — сфера AUDIO_FALLOFF_MIN..MAX, панорама по стороне экрана
   Location3D.js   локация: View3D + Terrain3D + текстура земли (LOCATION_GROUND) + объекты (addObject/placeObject,
-                  update(dt) — вращение частей по anim, клип по clip)
+                  findByTag/setHidden, update(dt) — вращение частей по anim, клип по clip, звук по sound)
   SceneSchema.js  GENERATED (tools/manifest.mjs): машинно-читаемый контракт сцены — константы с
                   диапазонами редактора, поля записей, API
   SceneAPI.js     семантический слой для агентов и игр: Scene.spawn/move/remove/query/inspect/
@@ -130,12 +135,14 @@ js/               код игры — классические скрипты:
   main.js         вход: World3D.init -> Location3D(LOCATION_OBJECTS) -> камера -> UI -> Game -> цикл кадров; window.app
 libs/             playcanvas.min.js (2.x UMD, глобал pc; контейнерный загрузчик glTF встроен), simplex-noise.js;
                   playcanvas.d.ts — типы движка для tsc
-assets/           ground_texture_{g,d,s}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
-                  (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs)
-tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты), make-character.mjs
+assets/           ground_texture_{g,s,d}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
+                  (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs);
+                  sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
+tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты), make-character.mjs,
+                  make-sounds.mjs
 tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
-tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, связка
-                  скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка pc
+tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, звук,
+                  связка скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка pc
 _utils/editor/    редактор (в билд не едет): server.mjs (HTTP), save.mjs (запись Constants.js,
                   Objects.js и UILayout.js), index.html, i18n.js (EN/RU), schema.js, inspector.js (Global Settings),
                   objects-panel.js (Objects: список, свойства, гизмо, импорт), ui-panel.js (UI: элементы
