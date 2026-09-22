@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { spawnSync } from 'node:child_process';
 import { UI_FIELDS, formatUI } from '../_utils/editor/save.mjs';
 import { ROOT, loadScripts } from './browser-scripts.mjs';
 
@@ -65,4 +66,17 @@ test('js/UILayout.js набора записан редактором: форм�
   const r = formatUI(evalLayout(src));
   assert.equal(r.ok, true);
   assert.equal(r.src, src);
+});
+
+test('tools/make-layout.mjs пишет UILayout.js тем же форматтером, что и редактор', () => {
+  const file = path.join(ROOT, 'js/UILayout.js');
+  const before = fs.readFileSync(file, 'utf8');
+  const r = spawnSync(process.execPath, ['tools/make-layout.mjs', '--ui=-'],
+      { input: JSON.stringify(evalLayout(before)), encoding: 'utf8', cwd: ROOT });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'файл не изменился: инструмент и редактор пишут одинаково');
+  const bad = spawnSync(process.execPath, ['tools/make-layout.mjs', '--ui=-'],
+      { input: JSON.stringify([{ id: '1st', kind: 'text', anchor: 'nope' }]), encoding: 'utf8', cwd: ROOT });
+  assert.notEqual(bad.status, 0, 'негодные записи не проходят');
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'при отказе файл не тронут');
 });

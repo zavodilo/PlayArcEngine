@@ -137,3 +137,53 @@ test('home и lookAt возвращают цель на землю, слежен
   for (let i = 0; i < 300; i++) cam.update(0.1);
   assert.ok(Math.abs(cam.lift) < 1e-3 && Math.abs(cam.target.x - 1000) < 1e-3);
 });
+
+// --- Feedback from games built on the kit: framing and the left button --------------------
+
+const fakeCanvas = () => ({ getBoundingClientRect: () => ({ left: 0, top: 0 }), setPointerCapture() {} });
+const mouse = (button) => ({ button, pointerType: 'mouse', clientX: 100, clientY: 100, preventDefault() {} });
+
+test('frame() кадрирует субъект одним вызовом: ориентация, зум и высота точки взгляда', () => {
+  const { cam } = makeCamera({});
+  cam.frame(600, 700, 120, { azimuthDeg: -70, pitchDeg: 30, zoom: 1.6 });
+  assert.ok(Math.abs(cam.azimuth - (-70 * Math.PI / 180)) < EPS, 'азимут из opts');
+  assert.ok(Math.abs(cam.pitch - 30 * Math.PI / 180) < EPS, 'наклон из opts');
+  assert.equal(cam.zoom, 1.6);
+  assert.equal(cam.target.x, 600);
+  assert.equal(cam.target.y, 700);
+  assert.ok(Math.abs(cam.target.h - 120) < EPS, 'точка взгляда на высоте субъекта, а не на земле');
+  // без opts ориентация и зум не трогаются
+  const az = cam.azimuth, z = cam.zoom;
+  cam.frame(100, 100, 40);
+  assert.equal(cam.azimuth, az);
+  assert.equal(cam.zoom, z);
+  assert.ok(Math.abs(cam.target.h - 40) < EPS);
+});
+
+test('ЛКМ в игровом режиме свободен для игры; CAMERA_LMB_ORBIT = 1 отдаёт его камере', () => {
+  const off = makeCamera({});
+  off.cam._canvas = fakeCanvas();
+  off.cam.c.lmbOrbit = 0;
+  off.cam._onDown(mouse(0));
+  assert.equal(off.cam._pointers.size, 0, 'по умолчанию ЛКМ камере не достаётся');
+
+  const on = makeCamera({});
+  on.cam._canvas = fakeCanvas();
+  on.cam.c.lmbOrbit = 1;
+  on.cam._onDown(mouse(0));
+  assert.equal(on.cam._pointers.size, 1);
+  assert.equal([...on.cam._pointers.values()][0].mode, 'look', 'осмотр с места камеры');
+
+  const following = makeCamera({});
+  following.cam._canvas = fakeCanvas();
+  following.cam.c.lmbOrbit = 1;
+  following.cam.follow({ x: 500, y: 500 });
+  following.cam._onDown(mouse(0));
+  assert.equal([...following.cam._pointers.values()][0].mode, 'orbit', 'при слежении — орбита');
+
+  const rmb = makeCamera({});
+  rmb.cam._canvas = fakeCanvas();
+  rmb.cam.c.lmbOrbit = 0;
+  rmb.cam._onDown(mouse(2));
+  assert.equal(rmb.cam._pointers.size, 1, 'ПКМ вращает независимо от новой константы');
+});

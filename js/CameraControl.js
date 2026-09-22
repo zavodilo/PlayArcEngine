@@ -80,6 +80,7 @@ class CameraController {
             limits: typeof CAMERA_LIMITS !== U ? CAMERA_LIMITS : 0,
             liftMax: typeof CAMERA_LIFT_MAX !== U ? CAMERA_LIFT_MAX : 600,
             orbit: typeof CAMERA_ORBIT !== U ? CAMERA_ORBIT : 1,
+            lmbOrbit: typeof CAMERA_LMB_ORBIT !== U ? CAMERA_LMB_ORBIT : 0,
             orbitDegPerPx: typeof CAMERA_ORBIT_DEG_PER_PX !== U ? CAMERA_ORBIT_DEG_PER_PX : 0.3,
             pitchMin: typeof CAMERA_ORBIT_PITCH_MIN_DEG !== U ? CAMERA_ORBIT_PITCH_MIN_DEG : 35,
             pitchMax: typeof CAMERA_ORBIT_PITCH_MAX_DEG !== U ? CAMERA_ORBIT_PITCH_MAX_DEG : 88
@@ -123,6 +124,22 @@ class CameraController {
         this.lift = 0;
         this._clampTarget();
         this.target.h = this._groundH(this.target.x, this.target.y);
+    }
+
+    // One call to aim the game camera at a subject — the "look at the machine" the sample
+    // games used to assemble by hand from azimuth / pitch / zoom / lookAt. Orientation and zoom
+    // come from opts when given and stay as they are otherwise; the look-at point goes h px
+    // above the ground (lookAt without h drops it to the ground).
+    /** @param {number} x @param {number} y @param {number} h
+     *  @param {{ azimuthDeg?: number, pitchDeg?: number, zoom?: number }} [opts] */
+    frame(x, y, h, opts) {
+        const o = opts || {}, D = Math.PI / 180;
+        if (o.azimuthDeg != null) this.azimuth = o.azimuthDeg * D;
+        if (o.pitchDeg != null) this.pitch = this._clampPitch(o.pitchDeg * D);
+        if (o.zoom != null) { this.zoomTarget = this._clampZoom(o.zoom); this.zoom = this.zoomTarget; }
+        this.lookAt(x, y, h);
+        this._apply();
+        return this;
     }
 
     follow(obj) { this.followObj = obj || null; }
@@ -404,6 +421,7 @@ class CameraController {
         if (e.pointerType === 'touch') mode = 'touch';
         else if (e.button === 1 || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
         else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
+        else if (e.button === 0 && !this.free && this.c.lmbOrbit > 0 && this.c.orbit > 0) mode = this.followObj ? 'orbit' : 'look';
         else if (e.button === 0 && this.free) mode = 'orbit';
         if (!mode) return;
         e.preventDefault();
