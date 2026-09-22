@@ -1,6 +1,6 @@
 ---
 name: world3d
-description: The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D (location), Model3D and Gltf3D (FBX and GLB models, skeleton, animation clips), CameraControl (camera), Game.js (sample game). Read before editing World3D.js, Terrain3D.js, Location3D.js, Model3D.js, Gltf3D.js, CameraControl.js, Game.js, main.js and the CAMERA_*/WORLD3D_*/TERRAIN_*/LOCATION_* blocks of Constants.js, before adding objects or animated characters to the scene.
+description: The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D (location), Model3D and Gltf3D (static FBX meshes with material colors; GLB models with skeleton, textures and animation clips), CameraControl (camera), Game.js (sample game). Read before editing World3D.js, Terrain3D.js, Location3D.js, Model3D.js, Gltf3D.js, CameraControl.js, Game.js, main.js and the CAMERA_*/WORLD3D_*/TERRAIN_*/LOCATION_* blocks of Constants.js, before adding objects or animated characters to the scene.
 ---
 
 # 3D world: World3D, Terrain3D, Location3D, camera
@@ -244,6 +244,21 @@ objects there.
   (`attributes: { vertex_position: pc.SEMANTIC_POSITION, … }`); custom streams go through
   `mesh.setVertexStream(pc.SEMANTIC_ATTR6, …)`. A missing binding reads as zeros: the ink
   ribbons once exploded into screen-filling quads.
+- The silhouette hull is an inverted-hull post pass on the SAME mesh at equal view depth:
+  on some hand-built meshes (procedural boxes/cones, imported convex props) the hull wins
+  the depth tie and paints the object over with the ink color — a black shell with the ink
+  creases on top. Remedy: register such objects with
+  `World3D.addObject(view, ent, kind, { outline: false })` (toon bands and ink edges stay),
+  or keep the hull for kit/Blender meshes only. Symptom to recognize: the object renders
+  lit and correct with `WORLD3D_TOON_OUTLINE = 0` and black with it on.
+- FBX carries NO textures, bones or clips into this kit (only vertex colors of materials):
+  an imported foliage/prop set from a DCC or a game engine renders as flat color shapes.
+  Plan palettes for that, or ship GLB (textures + skeleton + clips) for anything that must
+  keep its look or animate.
+- `World3D.removeObject` drops the entity's instances from custom layers (OVERLAY/ACTOR,
+  put there by `view.setLayer`) BEFORE destroying it: a destroyed instance left listed in a
+  layer crashes the next cull on its stale aabb. If you bypass removeObject and destroy a
+  layered entity yourself, call `view.dropFromLayers(mi)` for every mesh instance first.
 - The outline hull cull is `CULLFACE_BACK` for the kit's winding in the mirrored world
   (measured: `CULLFACE_FRONT` drew the near shell over the object). Do not "fix" it without
   re-measuring on both an FBX prop and the skinned GLB.

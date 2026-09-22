@@ -55,7 +55,7 @@
             },
             {
                 "name": "world3d",
-                "description": "The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D (location), Model3D and Gltf3D (FBX and ",
+                "description": "The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D (location), Model3D and Gltf3D (static F",
                 "canon": "claude/skills/world3d/SKILL.md"
             }
         ],
