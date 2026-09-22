@@ -19,6 +19,11 @@ function makeCamera(opts = {}) {
   const terrain = { heightAt: opts.heightAt || (() => 0), outerRing: 2400, hMin: 0 };
   const cam = new CameraController(view, { terrain, bounds: { w: 2048, h: 2048 }, free: !!opts.free });
   cam.c.limits = opts.limits ? 1 : 0;   // the test does not depend on the CAMERA_LIMITS value in Constants.js
+  // Neither on CAMERA_FLY_SPEED / CAMERA_ZOOM of the game project: the flight math is
+  // checked at the kit's reference speed and zoom 1 (STEP below assumes exactly that).
+  // A game is free to retune both constants (an RTS zooms in, a flyer zooms out).
+  cam.c.flySpeed = 900;
+  cam.zoom = 1; cam.zoomTarget = 1;
   return { cam, liftMax: page.get('CAMERA_LIFT_MAX'), pitchMin: page.get('CAMERA_ORBIT_PITCH_MIN_DEG') };
 }
 

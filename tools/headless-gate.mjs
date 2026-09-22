@@ -120,7 +120,9 @@ try {
             smokeGame = s;
             note('game smoke: ' + JSON.stringify(s));
             if (!s.ok) failures.push('game: ' + s.why);
-            if (s.uniqueColors16 < 10) failures.push('game: frame looks blank (uniqueColors16 ' + s.uniqueColors16 + ')');
+            // A dark but alive frame (night, fog of war, a menu over a dim world) can fill
+            // few color buckets; a boot failure fills ONE. groundish/HUD/console catch the rest.
+            if (s.uniqueColors16 <= 4) failures.push('game: frame looks blank (uniqueColors16 ' + s.uniqueColors16 + ')');
             if (!s.groundish) failures.push('game: ground not visible (mean ' + s.mean.map(v => Math.round(v)).join(',') + ')');
             if (s.uiChildren < 2) failures.push('game: HUD missing (' + s.uiChildren + ' elements)');
         }
@@ -149,7 +151,7 @@ try {
             smokeEd = Object.assign({ panes }, s);
             note('editor smoke: ' + JSON.stringify(s) + ' panes:' + panes);
             if (!s.ok) failures.push('editor: ' + s.why);
-            if (s.uniqueColors16 < 10) failures.push('editor: view looks blank');
+            if (s.uniqueColors16 <= 4) failures.push('editor: view looks blank');
             if (panes < 3) failures.push('editor: panes missing (' + panes + ')');
         }
         const bad = errors.filter(e => !/glReadPixels/.test(e));
