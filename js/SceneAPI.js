@@ -202,6 +202,50 @@ const Scene = {
         };
     },
 
+    // --- voxels: the optional Voxel3D module ----------------------------------------
+    // The default volume of the location (created on first use); a game that wants several
+    // volumes talks to Voxel3D.create(view, …) itself (skill `voxel`).
+    _voxel: null,
+
+    voxelVolume() {
+        const loc = this._location();
+        if (typeof Voxel3D === 'undefined') throw new Error('Scene.voxel*: js/Voxel3D.js is not loaded (add the script tag before js/SceneAPI.js)');
+        if (!loc.view) throw new Error('Scene.voxel*: the 3D world is not up yet');
+        if (!Scene._voxel || Scene._voxel.view !== loc.view) Scene._voxel = Voxel3D.create(loc.view, { name: 'voxel' });
+        return Scene._voxel;
+    },
+
+    /** One cube at map (x, y) and height level z; color — '#rrggbb' | 0xRRGGBB | [r,g,b]. */
+    voxelSet(x, y, z, color) {
+        const v = this.voxelVolume();
+        v.set(x, y, z, color);
+        v.rebuild();
+        return v.count;
+    },
+
+    /** An inclusive box of cubes, one color. */
+    voxelFill(x0, y0, z0, x1, y1, z1, color) {
+        const v = this.voxelVolume();
+        v.fillBox(x0, y0, z0, x1, y1, z1, color);
+        v.rebuild();
+        return v.count;
+    },
+
+    voxelClear(x, y, z) {
+        const v = this.voxelVolume();
+        v.clear(x, y, z);
+        v.rebuild();
+        return v.count;
+    },
+
+    voxelClearAll() {
+        if (Scene._voxel) Scene._voxel.clearAll();
+        return 0;
+    },
+
+    /** How many cubes the default volume holds (0 — no volume yet). */
+    voxelCount() { return Scene._voxel ? Scene._voxel.count : 0; },
+
     /** Every live scatter: [{ name, source, count, batches, seed }]. */
     queryScatter() {
         return [...Scene._scatters.values()].map(sc => ({

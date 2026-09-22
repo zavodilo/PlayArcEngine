@@ -7,7 +7,7 @@ import { loadScripts, stub } from './browser-scripts.mjs';
 
 function makeScene() {
     const page = loadScripts(['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/SceneSchema.js',
-        'js/Debug3D.js', 'js/Procedural3D.js', 'js/Instances3D.js', 'js/SceneAPI.js'],
+        'js/Debug3D.js', 'js/Procedural3D.js', 'js/Instances3D.js', 'js/Voxel3D.js', 'js/SceneAPI.js'],
         { pc: stub(), World3D: stub(), Debug3D: { lint: async () => ({ findings: [], stats: { triangles: 0 } }) } });
     const loc = {
         objects: [],
@@ -260,4 +260,20 @@ test('scatter без seed идёт из потока сессии: Scene.seed п
     const ha = grab(a.Scene), hb = grab(b.Scene);
     const ia = a.Scene._scatters.get(ha.name).instances.items, ib = b.Scene._scatters.get(hb.name).instances.items;
     assert.equal(ia.map(i => i.x.toFixed(6)).join(','), ib.map(i => i.x.toFixed(6)).join(','));
+});
+
+test('voxel: фасад Scene строит объём по кубу, коробка, расчистка', () => {
+    const { Scene } = makeScene();
+    assert.equal(Scene.voxelCount(), 0, 'объёма ещё нет');
+    assert.equal(Scene.voxelSet(4, 2, 0, '#7a5230'), 1);
+    assert.equal(Scene.voxelFill(4, 2, 1, 6, 4, 2, 0x8a8a8a), 1 + 3 * 3 * 2);
+    assert.equal(Scene.voxelCount(), 19);
+    const vol = Scene.voxelVolume();
+    assert.equal(Array.from(vol.get(5, 3, 1), v => v.toFixed(4)).join(','),
+        [0x8a / 255, 0x8a / 255, 0x8a / 255].map(v => v.toFixed(4)).join(','));
+    assert.equal(vol.nodes.size >= 1, true, 'чанк замешился');
+    assert.equal(Scene.voxelClear(4, 2, 0), 18);
+    assert.equal(Scene.voxelClearAll(), 0);
+    assert.equal(vol.nodes.size, 0, 'меши выброшены');
+    assert.throws(() => Scene.voxelSet(1, 1, 1, 'red'), /bad color/);
 });
