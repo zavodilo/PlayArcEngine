@@ -1110,6 +1110,7 @@ const SCENE_SCHEMA = {
         "spawn": "Scene.spawn(model, opts) -> handle { name, def, loaded } ; opts: { name?, kind?, x?, y?, h?, heading?, rot?, scale?, clip? }",
         "scatter": "Scene.scatter(def) -> handle { name, count, batches, setAll(items), removeAll() } ; def: { count, kind?|geometry?, at {x,y,r}|area {x,y,w,h}|grid {x,y,w,h,cols,rows,jitter}, scale? n|[min,max], heading? rad|'random', seed?, align? 'terrain'|'flat', group? 'prop'|'actor', name?, ink?, outline? } — static copies baked into one mesh per batch (Instances3D)",
         "queryScatter": "Scene.queryScatter() -> [{ name, source, count, batches, seed }]",
+        "voxel": "Scene.voxelSet(x,y,z,color) / voxelFill(x0,y0,z0,x1,y1,z1,color) / voxelClear(x,y,z) / voxelClearAll() / voxelCount() — the default Voxel3D volume (js/Voxel3D.js, optional module): unit cubes in map space, hidden-face culling, one mesh per chunk; color '#rrggbb' | 0xRRGGBB | [r,g,b]",
         "move": "Scene.move(name, patch) -> handle ; patch fields of def (x, y, h, heading, rot, scale, clip, kind)",
         "remove": "Scene.remove(name) -> boolean",
         "query": "Scene.query(filter?) -> plain JSON snapshots [{ name, model, kind, x, y, h, rot, scale, clip, loaded, error }]",

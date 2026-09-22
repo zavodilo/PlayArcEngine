@@ -30,6 +30,7 @@ Strategy: `ROADMAP.md`.
 | `sound` | The game's sound — js/Sound3D.js (effects, music, sounds that stand on the map, channels and volumes), the sound field of a location object in Objects.js, the A |
 | `ui` | The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records with nesting (parent) and stretch, the editor's UI tab (_utils/editor/ui-panel.js) with dr |
 | `verify` | How to check a change with your own eyes and numbers — the Browser pane, Debug3D (held view, synchronous frames, benchmark, scene lint, debug render modes), mea |
+| `voxel` | Optional voxel volumes — js/Voxel3D.js and the Scene.voxel* facade: unit cubes in map space, hidden-face culling, one mesh per chunk over Mesh3D.build (toon, sh |
 | `world3d` | The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D  |
 
 Vendored PlayCanvas engine skills (MIT, v0.3.0): `add-effects`, `apply-conventions`, `assemble-scene`, `bake-lighting`, `build-app`, `build-hud`, `calibrate-model`, `configure-animation`, `find-examples`, `inspect-glb`, `light-scene`, `manage-game-state`, `override-shader-chunks`, `reduce-draw-calls`, `reuse-scripts`, `verify-pixels` —

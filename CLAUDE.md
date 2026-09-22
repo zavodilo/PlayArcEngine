@@ -31,6 +31,7 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 | `_utils/`, редактор, инспектор, вкладка Objects, новая константа в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
 | сотни одинаковых объектов (лес, камни, столбы, трава, завалы): `Scene.scatter`, `js/Instances3D.js` (выпечка копий в общие меши — один draw call на партию), цена кадра на draw calls | `claude/skills/scatter/SKILL.md` |
+| всё из кубов (стены, террасы, подземелья, разрушаемые укрытия): `Scene.voxel*`, опциональный `js/Voxel3D.js` (чанки, отсечение скрытых граней, цвет на вершину) | `claude/skills/voxel/SKILL.md` |
 | своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
 | проверка правки глазами и числами: панель браузера, `Debug3D` (удержание вида, кадры без rAF, замер, линтер сцены, отладочные режимы), замер цены кадра, воспроизведение состояния пользователя | `claude/skills/verify/SKILL.md` |
 
@@ -116,6 +117,9 @@ js/               код игры — классические скрипты:
                   spawn(view, kind, opts); Mesh3D.build — нормали в МИРОВОМ пространстве + правка winding
                   (against ≈ 0) + outward-safety (keepWinding — для слитых партий); Location3D берёт их при
                   отсутствующей модели (def.fallback, rec.fallbackUsed)
+  Voxel3D.js      ОПЦИОНАЛЬНЫЕ воксельные объёмы: store Map(x,y,z -> цвет), чанки, отсечение скрытых
+                  граней, один меш на чанк через Mesh3D.build (цвета — COLOR-семантика); Scene.voxel*
+                  — фасад с объёмом по умолчанию (скилл voxel)
   Instances3D.js  статичные копии одной геометрии: scatterPoints (чистая раскладка — at/area/grid, scale,
                   heading, seed) + bake (зеркало (-x, h, y), поворот как rotQuat(0,-θ,0), нормали через
                   обратный масштаб, партии по MAX_BATCH_VERTS) — один draw call на партию; Scene.scatter —
@@ -218,7 +222,8 @@ Survival-стартер — образцовый пользователь сем
 3. Декларативно (агенты и быстрые прототипы): `Scene.spawn(model, opts)`, `Scene.move(name, patch)`,
    `Scene.query()`, `await Scene.inspect()` — валидация по манифесту, ошибки читабельны без кадра.
    Сотни одинаковых статичных объектов (лес, камни, столбы) — `Scene.scatter(def)` (скилл
-   `scatter`): копии выпекаются в общие меши, один draw call на партию.
+   `scatter`): копии выпекаются в общие меши, один draw call на партию. Всё из кубов —
+   `Scene.voxelFill/voxelSet` (опциональный `Voxel3D.js`, скилл `voxel`).
 4. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
    сам (скилл `world3d`). Поворот сущности — `World3D.rotQuat` / `eulerFromQuat`. Камера за героем —
    `app.camera.follow(obj)` (объект с полями `x`, `y`).

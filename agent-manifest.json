@@ -59,6 +59,11 @@
                 "canon": "claude/skills/verify/SKILL.md"
             },
             {
+                "name": "voxel",
+                "description": "Optional voxel volumes — js/Voxel3D.js and the Scene.voxel* facade: unit cubes in map space, hidden-face culling, one mesh per chunk over Mesh3D.build (toon, shadow, ink, outline as usual). Read befor",
+                "canon": "claude/skills/voxel/SKILL.md"
+            },
+            {
                 "name": "world3d",
                 "description": "The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D (location), Model3D and Gltf3D (FBX and ",
                 "canon": "claude/skills/world3d/SKILL.md"
