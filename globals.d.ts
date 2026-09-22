@@ -76,6 +76,12 @@ interface LocationObjectDef {
     clip?: string;
     /** Procedural3D kind used when `model` is missing/unreadable ('tree' | 'rock' | …). */
     fallback?: string;
+    /** A group name for game code: location.findByTag('coin'). */
+    tag?: string;
+    /** Placed but not in the scene until location.setHidden(rec, false). */
+    hidden?: boolean;
+    /** A sound standing at the object (Sound3D): src — assets/sounds/…, looped unless loop is false. */
+    sound?: { src: string; volume?: number; loop?: boolean; falloffMin?: number; falloffMax?: number };
 }
 
 /** Location object: Location3D.objects. */
@@ -98,5 +104,8 @@ interface LocationObject {
     /** True when the model file was missing and Procedural3D built a stand-in. */
     fallbackUsed?: boolean;
     clipRoot?: pc.Entity | null;
+    /** The playing def.sound and what it was started from (Location3D.updateSound). */
+    sound?: SoundHandle | null;
+    soundKey?: string;
 }
 

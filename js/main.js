@@ -1,5 +1,5 @@
 // main.js — entry point: 3D engine -> location with objects from Objects.js -> camera ->
-// UI (UILayout.js) -> game (Game.js) -> frame loop. window.app = { location, camera, game } —
+// UI (UILayout.js) -> game (Game.js) -> frame loop (Sound3D hears from where the camera is). window.app = { location, camera, game } —
 // for the console and for game code built on top of the kit.
 
 function updateLoadingProgress(percent) {
@@ -51,6 +51,7 @@ function startGame() {
         if (typeof Kit !== 'undefined') Kit._run(Math.min(0.1, dt));
         location.update(dt);
         camera.update(dt);
+        Sound3D.update(camera);
         World3D.renderFrame();
         requestAnimationFrame(loop);
     };

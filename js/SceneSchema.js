@@ -863,6 +863,83 @@ const SCENE_SCHEMA = {
             "options": null,
             "label": "Sample game: rest time (s)",
             "value": 4
+        },
+        {
+            "group": "models",
+            "name": "GAME_STEP_SEC",
+            "min": 0.1,
+            "max": 2,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Sample game: step interval (s)",
+            "value": 0.35
+        },
+        {
+            "group": "audio-mixer",
+            "name": "AUDIO_MASTER_VOLUME",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Master volume",
+            "value": 0.8
+        },
+        {
+            "group": "audio-mixer",
+            "name": "AUDIO_MUSIC_VOLUME",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Music",
+            "value": 0.6
+        },
+        {
+            "group": "audio-mixer",
+            "name": "AUDIO_SFX_VOLUME",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Effects",
+            "value": 1
+        },
+        {
+            "group": "audio-space",
+            "name": "AUDIO_FALLOFF_MIN",
+            "min": 0,
+            "max": 2000,
+            "step": 10,
+            "kind": "number",
+            "options": null,
+            "label": "Falloff Min (px)",
+            "value": 150
+        },
+        {
+            "group": "audio-space",
+            "name": "AUDIO_FALLOFF_MAX",
+            "min": 100,
+            "max": 8000,
+            "step": 50,
+            "kind": "number",
+            "options": null,
+            "label": "Falloff Max (px)",
+            "value": 1024
+        },
+        {
+            "group": "audio-space",
+            "name": "AUDIO_PAN",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Stereo width",
+            "value": 0.7
         }
     ],
     "object": {

@@ -2,7 +2,9 @@
 // of size LOCATION_WIDTH × LOCATION_HEIGHT with the LOCATION_GROUND texture, and
 // objects — models from Objects.js (LOCATION_OBJECTS), placed by the editor.
 // Shared by the game (main.js) and the editor (_utils/editor/lab.js): both call
-// update(dt) every frame — part spin of models (def.anim). The game creates its own
+// update(dt) every frame — part spin (def.anim), the looped clip (def.clip) and the sound
+// (def.sound) of the models. Game code finds what the editor placed by name or by tag
+// (findByTag) and shows hidden objects with setHidden. The game creates its own
 // objects in the view (World3D.addObject(location.view, entity, 'actor' | 'prop')) and
 // puts them on the ground via location.terrain.heightAt(x, y).
 //
@@ -54,8 +56,9 @@ class Location3D {
     // LOCATION_OBJECTS record -> object: { def, mesh, error, loaded }. The record
     // is returned immediately; the entity appears once the model finishes loading (loaded —
     // a promise). No file — an object without a mesh (error), the scene doesn't crash.
-    // def: { name, model, kind, x, y, h, rot, scale, anim?, clip? } — the fields are live: edit +
-    // placeObject; anim and clip are read every frame (spinPart, playClip).
+    // def: { name, model, kind, x, y, h, rot, scale, anim?, clip?, tag?, hidden?, sound? } — the
+    // fields are live: edit + placeObject; anim, clip and sound are read every frame (spinPart,
+    // playClip, updateSound); hidden — through setHidden.
     /** @param {LocationObjectDef} def @returns {LocationObject} */
     addObject(def) {
         /** @type {LocationObject} */
@@ -67,6 +70,7 @@ class Location3D {
             /** @type {ArcNode} */ (rec.mesh).meta = { locationObject: rec };
             World3D.addObject(this.view, rec.mesh, def.kind);
             this.placeObject(rec);
+            this.applyHidden(rec);
             return rec;
         }).catch((e) => {
             rec.error = (e && e.message) || String(e);
@@ -111,12 +115,59 @@ class Location3D {
         for (const rec of this.objects) this.placeObject(rec);
     }
 
+    // Objects with def.tag === tag, in list order: what the editor placed and game code picks
+    // up as a group — findByTag('coin'). None — an empty array.
+    /** @param {string} tag @returns {LocationObject[]} */
+    findByTag(tag) {
+        return tag ? this.objects.filter(rec => rec.def.tag === tag) : [];
+    }
+
+    // def.hidden: the object is placed but not in the scene — no mesh in the frame, no sound —
+    // until the game shows it: setHidden(rec, false). Works before the model has loaded too.
+    /** @param {LocationObject} rec @param {boolean} hidden */
+    setHidden(rec, hidden) {
+        if (hidden) rec.def.hidden = true;
+        else delete rec.def.hidden;
+        this.applyHidden(rec);
+    }
+
+    // opts.showHidden (the editor): a hidden object stays in the frame as a ghost — otherwise
+    // there is nothing to click and drag. Ghost alpha is an editor-lab concern (per-instance
+    // materials); here the entity simply leaves the frame.
+    /** @param {LocationObject} rec */
+    applyHidden(rec) {
+        if (!rec.mesh) return;
+        const hidden = !!rec.def.hidden;
+        rec.mesh.enabled = !hidden;
+    }
+
     // Object animation frame — before World3D.renderFrame().
     update(dt) {
         dt = Math.min(0.1, Math.max(0, dt || 0));
         for (const rec of this.objects) {
             this.spinPart(rec, dt);
             this.playClip(rec);
+            this.updateSound(rec);
+        }
+    }
+
+    // def.sound = { src, volume?, loop?, falloffMin?, falloffMax? }: a sound standing at the object
+    // (Sound3D, follows def.x, def.y), looped unless loop is false. Restarted when the file or
+    // loop changes, volume and distances apply on the fly (the editor); a hidden object is silent.
+    /** @param {LocationObject} rec */
+    updateSound(rec) {
+        const s = rec.def.sound, on = !!(s && s.src) && !rec.def.hidden;
+        const key = on ? s.src + (s.loop === false ? '|once' : '|loop') : '';
+        if (key !== (rec.soundKey || '')) {
+            if (rec.sound) rec.sound.stop();
+            rec.sound = on ? Sound3D.play((this.opts.assetBase || '') + s.src, { at: rec.def, node: rec.mesh,
+                loop: s.loop !== false, volume: s.volume, falloffMin: s.falloffMin, falloffMax: s.falloffMax }) : null;
+            rec.soundKey = key;
+        } else if (rec.sound && rec.sound.playing) {
+            rec.sound.setVolume(s.volume == null ? 1 : s.volume);
+            rec.sound.falloffMin = Number(s.falloffMin) > 0 ? Number(s.falloffMin) : 0;
+            rec.sound.falloffMax = Number(s.falloffMax) > 0 ? Number(s.falloffMax) : 0;
+            rec.sound.node = rec.mesh;   // the model may have arrived after the sound started
         }
     }
 
@@ -174,6 +225,9 @@ class Location3D {
     removeObject(rec) {
         const i = this.objects.indexOf(rec);
         if (i >= 0) this.objects.splice(i, 1);
+        if (rec.sound) rec.sound.stop();
+        rec.sound = null;
+        rec.soundKey = '';
         if (rec.mesh && this.view) Model3D.dispose(this.view, rec.mesh);
         rec.mesh = null;
     }
@@ -210,6 +264,7 @@ class Location3D {
     }
 
     dispose() {
+        for (const rec of this.objects) if (rec.sound) rec.sound.stop();
         this.objects = [];   // entities and materials die with the view
         if (this.terrain) this.terrain.dispose();
         this.terrain = null;
@@ -217,6 +272,8 @@ class Location3D {
         this.view = null;
     }
 }
+
+Location3D.GHOST_ALPHA = 0.35;   // a hidden object in the editor (opts.showHidden)
 
 // Ground textures by LOCATION_GROUND: 0 — grass, 1 — sand, 2 — snow.
 Location3D.GROUNDS = [

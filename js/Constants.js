@@ -58,9 +58,19 @@ const TERRAIN_CELL = 8;                 // px: terrain grid step (mobile — no 
 const MODEL_CLIP_BLEND_SEC = 0.2;       // s: cross-fade between animation clips of a .glb model (idle -> run); 0 — instant
 const UI_REF_HEIGHT = 720;              // px: the screen height the UI layout (UILayout.js) is drawn for; the UI scales with the screen height, 0 — no scaling
 
+// --- SOUND (Sound3D.js): channel volumes; a sound with a place on the map is heard from where
+// the CAMERA is — its audible region is a sphere of AUDIO_FALLOFF_MAX around it ---
+const AUDIO_MASTER_VOLUME = 0.8;        // 0..1: everything (0 — silence)
+const AUDIO_MUSIC_VOLUME = 0.6;         // 0..1: the 'music' channel
+const AUDIO_SFX_VOLUME = 1;             // 0..1: the 'sfx' channel — effects and object sounds
+const AUDIO_FALLOFF_MIN = 150;          // px: full volume while the camera is this close to a sound (0 — it fades from the source itself)
+const AUDIO_FALLOFF_MAX = 1024;         // px: from here on it is silent (fades linearly in between); an object may set its own pair. The camera stands ~800 px from its look-at point at zoom 1
+const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of the screen goes into one ear (0 — mono)
+
 // --- SAMPLE GAME (Game.js): the "Run" button, the energy bar ---
 const GAME_RUN_SEC = 8;                 // s: a full energy bar lasts this long while running
 const GAME_REST_SEC = 4;                // s: an empty energy bar refills in this time while standing
+const GAME_STEP_SEC = 0.35;             // s: between footstep sounds while the character runs
 
 // --- CAMERA (CameraControl.js): target on the map, azimuth, pitch and zoom. Zoom is
 // screen px per world px at the look-at point; distance is derived from it. Flight
