@@ -29,6 +29,22 @@ byte for byte, no line-ending conversion.
   keeps running the old `.js` (`no-cache` will not do — it allows 304).
 - On start — an asset check with the same scanner the builder uses; Range requests; MIME.
 
+## Editor-owned files without the editor (`tools/make-layout.mjs`)
+
+`js/UILayout.js` and `js/Objects.js` belong to the editor: their bytes must round-trip
+`formatUI` / `formatObjects` (tests/ui.test.mjs, tests/editor-save.test.mjs), so a hand-written
+or code-generated copy fails `check.mjs`. To produce them without opening the editor — an agent
+or CI writing a HUD, a starter, a fixture:
+
+```
+node tools/make-layout.mjs --ui=hud.json --objects=props.json   # '-' reads stdin
+```
+
+The JSON is a plain array of records (the shapes the two files hold); the tool runs the editor's
+own formatters and refuses to touch a file when a record is invalid. A new game script still
+needs the two manual steps (invariant 2): a `<script src="js/…">` in `index.html` and a line in
+`CODE_FILES` (`tools/asset-scan.mjs`).
+
 ## Builder (`tools/build.mjs`)
 
 `[1/4] checks -> [2/4] build/ -> [3/4] dist/*.zip -> [4/4] report`. Any failure stops the

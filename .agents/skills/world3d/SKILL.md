@@ -218,6 +218,48 @@ in two passes. `groundFocus()` — the ground point at the frame center (`{ x, y
 flight it is ahead of the target; the shadow range is fitted around it, the editor drops new
 objects there.
 
+### Camera API in one place (what a game actually calls)
+
+Fields: `azimuth`, `pitch` (radians), `zoom` / `zoomTarget`, `target { x, y, h }`, `lift`,
+`followObj`, `flightKeys`, `ignorePointer(e)`.
+Methods: `home()`, `lookAt(x, y[, h])`, `frame(x, y, h, { azimuthDeg, pitchDeg, zoom })`,
+`follow(obj | null)`, `setFree(on)`, `shake(ms, intensity)`, `groundFocus()`,
+`worldPerScreenPx()`, `screenDeltaToWorld()`, `worldDeltaToScreen()`.
+
+Framing a subject is ONE call, not an assembly of internals read out of CameraControl.js:
+
+    camera.frame(MACHINE_X, MACHINE_Y, 120, { azimuthDeg: -72, pitchDeg: 28, zoom: 1.6 });
+
+Pointer and keys in game mode: RMB rotates (`CAMERA_ORBIT`), the wheel zooms, R is `home()`.
+**LMB is deliberately game input** (aiming, picking) — the camera leaves it alone. A game with
+no LMB action of its own sets `CAMERA_LMB_ORBIT = 1` and takes the rotation on both buttons;
+finer control is `camera.ignorePointer = (e) => …`. A game that drives its own object with the
+keyboard sets `camera.flightKeys = false` and WASD / arrows stop flying the camera.
+
+### Which way does a prop face the camera
+
+At the default `CAMERA_AZIMUTH_DEG = -90` the camera stands on the **+map-y** side of its
+target, so a prop's front faces +map-y (for voxel geometry: the authored +z before the bake's
+mirror). At another azimuth rotate the prop by `heading`, or verify with two asymmetric
+markers and `view.projectToScreen(mx ± d, my, h)` — compare the returned screen x; the side is
+measured, never derived (Pitfalls below). A prop that "turned its back to the player" is almost
+always an authoring-axis mistake, not a camera bug.
+
+### No physics engine: the kinematic pattern
+
+The kit ships no rigid bodies and no collision system: PlayCanvas' physics components would
+need an external wasm library, which the zero-dependency invariant forbids. Grabbing, piling
+and falling are kinematics the game writes itself; the proven shape of it (a claw machine):
+
+- a grab is a distance test (carrier axis to the object centre) times a skill factor — not a
+  collider overlap;
+- a pile is two relaxation passes per frame: push apart every pair closer than the sum of
+  their radii, clamp to the walls, keep out of holes;
+- falling is `vy -= g * dt; h += vy * dt` with one bounce (`vy = -vy * 0.28`) before settling;
+- a carried object is re-placed from the carrier's pose every frame, not jointed to it.
+
+All of it lives in game state (invariant 4): the view only shows the result.
+
 ## Pitfalls (each one already cost an iteration)
 
 - Which screen side a map axis lands on is NOT to be derived by hand from the mirror table:

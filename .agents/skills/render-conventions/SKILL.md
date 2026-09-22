@@ -137,6 +137,12 @@ vertex rgb ALREADY multiplied by the panel alpha and `material.opacity` set to t
 plus `depthWrite = false`, `cull = pc.CULLFACE_NONE`, `useLighting = false`, and
 `castShadow = false` in the `World3D.addObject` opts. With `BLEND_NORMAL` and an unmultiplied
 color the panel renders effectively opaque and hides what it was meant to show.
+Author a transparent surface as a single-voxel-thick SHEET facing the viewer, never as a closed
+box: a closed translucent box sorts against its own far side and reads as a slab, and its
+interior faces fight the culling. Winding is still checked by `Debug3D.lint` on glass (the
+normals exist), but keep the silhouette outline off (`outline: false` in the addObject opts) —
+an inverted hull around a see-through panel draws an opaque shell over exactly the surface that
+must stay see-through.
 
 ## Checklist
 

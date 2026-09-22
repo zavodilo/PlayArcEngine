@@ -89,6 +89,7 @@ const CAMERA_FLY_SPEED = 900;           // flight on WASD, arrows and Q/E: scree
 const CAMERA_LIMITS = 0;                // game camera limits: 0 — free flight, 1 — pitch within CAMERA_ORBIT_PITCH_*, target inside the location, flight ceiling; the ground edge stays out of the frame
 const CAMERA_LIFT_MAX = 600;            // px, with limits: how high above the ground flight lifts the look-at point (higher — the ground edge gets into the frame)
 const CAMERA_ORBIT = 1;                 // camera rotation by the player (RMB: look-around, orbit while following an object): 0 — orientation fixed, 1 — allowed
+const CAMERA_LMB_ORBIT = 0;           // left button rotates the game camera too: 0 — LMB stays free for the game, 1 — orbits like RMB
 const CAMERA_ORBIT_DEG_PER_PX = 0.3;    // degrees of rotation per screen px of drag
 const CAMERA_ORBIT_PITCH_MIN_DEG = 35;  // with limits: won't go lower toward the ground (the limit also rises on its own — ground edge stays out of the frame)
 const CAMERA_ORBIT_PITCH_MAX_DEG = 88;  // with limits: higher — almost straight from above

@@ -187,6 +187,26 @@ const SCENE_SCHEMA = {
         },
         {
             "group": "camera",
+            "name": "CAMERA_LMB_ORBIT",
+            "min": null,
+            "max": null,
+            "step": null,
+            "kind": "select",
+            "options": [
+                {
+                    "value": 0,
+                    "label": "off — LMB belongs to the game"
+                },
+                {
+                    "value": 1,
+                    "label": "LMB rotates like RMB"
+                }
+            ],
+            "label": "Left button rotation",
+            "value": 0
+        },
+        {
+            "group": "camera",
             "name": "CAMERA_ORBIT_DEG_PER_PX",
             "min": 0.05,
             "max": 1,
