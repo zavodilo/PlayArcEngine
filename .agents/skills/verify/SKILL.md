@@ -86,3 +86,11 @@ scene; every finding text says what to change. `Debug3D.setMode('backfaces' | 'n
 3. Looked from the player's start camera with the user's constants; day and night if light changed.
 4. Cost measured with `bench` / `benchToggle` when the change touches the frame; size reported.
 5. Mode off, view released, probes removed — or the tab reloaded.
+
+## Visual checks under software GL
+
+Headless Chrome renders through SwiftShader: heavy GLBs may not survive it and AA/perf mean
+nothing there. `Debug3D.softwareGL()` tells you which world the screenshot came from — in a
+software context check LAYOUT, COLORS and presence (objects on their places, no black hull
+shells, HUD text), and keep heavy-asset scenes for a real GPU. Gate visuals as levels:
+machine asserts (lint, counts) first, screenshots second.

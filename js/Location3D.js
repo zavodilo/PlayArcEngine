@@ -71,6 +71,20 @@ class Location3D {
         }).catch((e) => {
             rec.error = (e && e.message) || String(e);
             console.warn('Location3D: не загрузилась модель ' + def.model + ' — ' + rec.error);
+            // Procedural fallback (feedback: a missing file must not leave a hole in the
+            // scene): def.fallback or the location's opts.fallback picks a stand-in kind;
+            // the record keeps error and marks fallbackUsed.
+            const kind = def.fallback || this.opts.fallback;
+            if (kind && this.view) {
+                const fk = kind === 'auto' ? Procedural3D.fallbackKindFor(def) : kind;
+                rec.mesh = Procedural3D.spawn(this.view, fk, {
+                    name: def.name, x: def.x, y: def.y, h: def.h, kind: def.kind,
+                    heading: Array.isArray(def.rot) ? def.rot[1] : def.rot,
+                    scale: Array.isArray(def.scale) ? def.scale[0] : def.scale,
+                    seed: Procedural3D.hashName(def.name)
+                });
+                rec.fallbackUsed = true;
+            }
             return rec;
         });
         return rec;

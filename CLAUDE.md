@@ -22,7 +22,7 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 
 | Задача | Скилл |
 |---|---|
-| `js/` (`World3D.js`, `Terrain3D.js`, `Location3D.js`, `CameraControl.js`, `Model3D.js`, `Gltf3D.js`, `Objects.js`, `Game.js`, `main.js`), объекты в сцене, модели GLB и клипы анимации, свет/тени/toon/контур, константы `CAMERA_*`/`WORLD3D_*`/`TERRAIN_*`/`LOCATION_*` | `claude/skills/world3d/SKILL.md` |
+| `js/` (`World3D.js`, `Terrain3D.js`, `Location3D.js`, `CameraControl.js`, `Model3D.js`, `Gltf3D.js`, `Procedural3D.js`, `Objects.js`, `Game.js`, `main.js`), объекты в сцене, модели GLB и клипы анимации, свет/тени/toon/контур, константы `CAMERA_*`/`WORLD3D_*`/`TERRAIN_*`/`LOCATION_*` | `claude/skills/world3d/SKILL.md` |
 | ЛЮБОЙ элемент интерфейса игры (текст, счётчик, шкала, кнопка, панель, меню): `js/UI.js`, `js/UILayout.js`, вкладка UI редактора (`ui-panel.js`), новый вид элемента | `claude/skills/ui/SKILL.md` |
 | `_utils/`, редактор, инспектор, вкладка Objects, новая константа в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
@@ -103,7 +103,12 @@ js/               код игры — классические скрипты:
   World3D.js      движок: init/renderFrame, View3D (камера, свет, тени, проекции), cfg(),
                   toon-шейдер ArcToonPlugin, контур рёбер, обводка силуэта, addObject
   Terrain3D.js    земля: поле высот из шума, сетка + кольцо за краем, heightAt/tiltAt
-  Model3D.js      модели: бинарный FBX -> pc.Mesh (load с кэшем, build, dispose); 1 см = 1 px; .glb уходит в Gltf3D
+  Model3D.js      модели: бинарный FBX -> pc.Mesh (load с кэшем, build, dispose); 1 см = 1 px; диффузные
+                  текстуры FBX (Video/Content/OP-связи) -> material.texture = { path, bytes }; .glb уходит в Gltf3D
+  Procedural3D.js процедурные заглушки без файлов: KINDS (box/crate/tree/rock/pole), geometry(kind, seed),
+                  spawn(view, kind, opts); Mesh3D.build — нормали в МИРОВОМ пространстве + правка winding
+                  (against ≈ 0) + outward-safety; Location3D берёт их при отсутствующей модели (def.fallback,
+                  rec.fallbackUsed)
   Gltf3D.js       модели glTF/GLB: скелет, текстуры, PBR -> StandardMaterial под toon; Clips3D — клипы анимации
                   (Model3D.clips(root).play('run') с плавным переходом)
   Location3D.js   локация: View3D + Terrain3D + текстура земли (LOCATION_GROUND) + объекты (addObject/placeObject,

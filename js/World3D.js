@@ -277,6 +277,10 @@ const World3D = {
                 this.outlineRemove(view, mi);
                 this.inkRemove(view, mi);
                 mi.castShadow = false;
+                // Custom layers keep their own instance lists: a mesh instance destroyed
+                // while still listed leaves a dangling entry (pc crashes on its stale aabb
+                // next cull). Drop FIRST, destroy after.
+                view.dropFromLayers(mi);
             }
         }
         entity.destroy();
@@ -1162,11 +1166,17 @@ class View3D {
         };
     }
 
-    // Everything created in the view dies with it.
+    // Everything created in the view dies with it — and leaves no dangling instances in
+    // the shared custom layers (pc culls by layer lists; a stale entry crashes the cull).
     dispose() {
         this.active = false;
         if (this.world.view === this) this.world.view = null;
         this._syncFns = [];
+        for (const mi of this.allMeshInstances()) this.dropFromLayers(mi);
+        for (const rec of [...(this._inks || []).values()]) {
+            for (const mi of [rec.mi]) this.dropFromLayers(mi);
+        }
+        for (const hull of [...(this._outlines || []).values()]) this.dropFromLayers(hull);
         for (const asset of (this._assets || [])) {
             try { asset.unload(); this.app.assets.remove(asset); } catch (e) { /* ok */ }
         }
