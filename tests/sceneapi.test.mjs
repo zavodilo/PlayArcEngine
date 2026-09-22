@@ -6,10 +6,12 @@ import { test } from 'node:test';
 import { loadScripts, stub } from './browser-scripts.mjs';
 
 function makeScene() {
-    const page = loadScripts(['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/SceneSchema.js', 'js/SceneAPI.js'],
+    const page = loadScripts(['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/SceneSchema.js',
+        'js/Debug3D.js', 'js/Procedural3D.js', 'js/Instances3D.js', 'js/SceneAPI.js'],
         { pc: stub(), World3D: stub(), Debug3D: { lint: async () => ({ findings: [], stats: { triangles: 0 } }) } });
     const loc = {
         objects: [],
+        view: stub(),
         addObject(def) {
             const rec = { def, mesh: null, error: null, loaded: Promise.resolve(null) };
             this.objects.push(rec);
@@ -19,7 +21,7 @@ function makeScene() {
         removeObject(rec) { this.objects.splice(this.objects.indexOf(rec), 1); }
     };
     page.ctx.app = { location: loc, camera: { follow() {} } };
-    page.ctx.World3D = { view: {}, fps: () => 60 };
+    page.ctx.World3D = { view: {}, fps: () => 60, addObject: () => {}, removeObject: () => {} };
     const cache = new Map();
     page.ctx.Model3D = {
         load: (p) => { if (!cache.has(p)) cache.set(p, Promise.resolve({})); return cache.get(p); },
@@ -90,8 +92,8 @@ test('inspect: итоги сцены и findings линта без кадра', 
     const r = await Scene.inspect();
     assert.equal(r.objects, 1);
     assert.equal(r.loaded, 0);
-    assert.deepEqual(r.errors, []);
-    assert.deepEqual(r.findings, []);
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.findings.length, 0);   // the real Debug3D.lint runs on the stub view
     assert.equal(r.fps, 60);
 });
 
@@ -212,4 +214,50 @@ test('inspect: фильтры kind/name/area и машиночитаемый о�
     const one = await Scene.inspect({ name: 'b' });
     assert.equal(one.entities.map(e => e.id).join(','), 'b');
     assert.equal(all.camera, null, 'без камеры в стабе camera = null');
+});
+
+test('scatter: валидация до выпечки — count, размещение, источник, имя', () => {
+    const { Scene } = makeScene();
+    assert.throws(() => Scene.scatter({ count: 0, kind: 'tree', area: { x: 0, y: 0, w: 10, h: 10 } }), /count must be > 0/);
+    assert.throws(() => Scene.scatter({ count: 5, kind: 'tree' }), /at \{x,y,r\}, area/);
+    assert.throws(() => Scene.scatter({ count: 5, area: { x: 0, y: 0, w: 10, h: 10 } }), /kind .* or geometry/);
+    const h = Scene.scatter({ count: 4, kind: 'tree', area: { x: 0, y: 0, w: 100, h: 100 }, seed: 3, name: 'forest' });
+    assert.equal(h.name, 'forest');
+    assert.equal(h.count, 4);
+    assert.ok(h.batches >= 1);
+    assert.throws(() => Scene.scatter({ count: 2, kind: 'rock', at: { x: 0, y: 0, r: 50 }, name: 'forest' }), /already exists/);
+});
+
+test('scatter: детерминизм по seed, terrain-выравнивание, queryScatter, remove', async () => {
+    const a = makeScene(), b = makeScene();
+    const ha = a.Scene.scatter({ count: 8, kind: 'rock', at: { x: 500, y: 500, r: 200 }, seed: 42, scale: [0.8, 1.4], heading: 'random' });
+    const hb = b.Scene.scatter({ count: 8, kind: 'rock', at: { x: 500, y: 500, r: 200 }, seed: 42, scale: [0.8, 1.4], heading: 'random' });
+    const ia = a.Scene._scatters.get(ha.name).instances.items, ib = b.Scene._scatters.get(hb.name).instances.items;
+    assert.equal(ia.map(i => [i.x.toFixed(3), i.y.toFixed(3), i.scale.toFixed(3), i.heading.toFixed(3)].join('|')).join(';'),
+        ib.map(i => [i.x.toFixed(3), i.y.toFixed(3), i.scale.toFixed(3), i.heading.toFixed(3)].join('|')).join(';'), 'один seed — одна поляна');
+
+    const c = makeScene();
+    c.loc.terrain = { heightAt: (x, y) => 10 + (x % 7) };
+    const hc = c.Scene.scatter({ count: 5, kind: 'tree', area: { x: 0, y: 0, w: 50, h: 50 }, seed: 1 });
+    const ic = c.Scene._scatters.get(hc.name).instances.items;
+    for (const it of ic) assert.equal(it.h, 10 + (it.x % 7), 'копии стоят на земле');
+    const hf = c.Scene.scatter({ count: 3, kind: 'crate', area: { x: 0, y: 0, w: 50, h: 50 }, seed: 1, align: 'flat', h: 25 });
+    for (const it of c.Scene._scatters.get(hf.name).instances.items) assert.equal(it.h, 25, "align: 'flat' — одна высота");
+
+    const list = c.Scene.queryScatter();
+    assert.equal(list.length, 2);
+    assert.equal(Array.from(list, x => x.name).sort().join(','), [hc.name, hf.name].sort().join(','));
+    assert.equal(list.find(x => x.name === hc.name).source, 'tree');
+    assert.equal(c.Scene.remove(hc.name), true);
+    assert.equal(c.Scene.queryScatter().length, 1);
+    const rep = await c.Scene.inspect();
+    assert.equal(rep.scatters.length, 1, 'inspect() показывает живые scatter-партии');
+});
+
+test('scatter без seed идёт из потока сессии: Scene.seed повторяет раскладку', () => {
+    const grab = (S) => { S.seed(9); return S.scatter({ count: 6, kind: 'pole', area: { x: 0, y: 0, w: 90, h: 90 } }); };
+    const a = makeScene(), b = makeScene();
+    const ha = grab(a.Scene), hb = grab(b.Scene);
+    const ia = a.Scene._scatters.get(ha.name).instances.items, ib = b.Scene._scatters.get(hb.name).instances.items;
+    assert.equal(ia.map(i => i.x.toFixed(6)).join(','), ib.map(i => i.x.toFixed(6)).join(','));
 });

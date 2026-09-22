@@ -4,6 +4,10 @@
 //   kind — 'text' | 'panel' | 'bar' | 'button'; anchor — one of 9 screen points ('top-left' …
 //   'bottom-right'): x, y go from it to the same point of the element (inward from an edge,
 //   signed from the center); w, h — px; numbers are px of a screen UI_REF_HEIGHT tall;
+//   parent (optional) — id of the element this one sits in: anchor, x, y then count from the
+//   parent's box, the parent clips it and hides it together with itself;
+//   stretch (optional) — 'h' | 'v' | 'both': fills the container on that axis, x (y) — the inset
+//   from both edges, w (h) is ignored;
 //   colors — '#rrggbb', '' — none; visible: 0 — hidden until the game calls show().
 //   Records go in drawing order: later — on top.
 const UI_LAYOUT = [

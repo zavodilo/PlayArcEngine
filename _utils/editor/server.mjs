@@ -24,11 +24,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 import { execFile } from 'node:child_process';
-import { failure, isModelPath, saveConstants, saveObjects, saveUI } from './save.mjs';
+import { failure, isModelPath, isSoundPath, saveConstants, saveObjects, saveUI } from './save.mjs';
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
-const EDITOR_API_VERSION = 19;
+const EDITOR_API_VERSION = 20;
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 const MODELS_DIR = path.join(ROOT, 'assets', 'models');
@@ -238,6 +238,11 @@ const server = http.createServer(async (req, res) => {
       console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
       return sendJson(res, 500, { ok: false, error: e.message });
     }
+  }
+  if (pathname === '/api/sounds') {
+    const names = await fsp.readdir(path.join(ROOT, 'assets', 'sounds')).catch(() => []);
+    const sounds = names.map(n => 'assets/sounds/' + n).filter(isSoundPath).sort();
+    return sendJson(res, 200, { ok: true, sounds });
   }
   if (pathname === '/api/pick-model' || pathname === '/api/import-model') {
     if (req.method !== 'POST') return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');

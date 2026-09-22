@@ -21,6 +21,7 @@ const Mesh3D = {
     // positions — flat [x, y, z, …] in WORLD (pc) space; indices optional (default: every
     // three vertices a triangle). normals optional: absent — computed per vertex from the
     // triangles; the winding is then FIXED against them (against ≈ 0, the lint convention).
+    // keepWinding: true — skip the closed-shape centroid flip (merged instance batches).
     build(view, name, geo) {
         const positions = geo.positions;
         let indices = geo.indices;
@@ -33,8 +34,10 @@ const Mesh3D = {
         let normals = geo.normals ? Float32Array.from(geo.normals) : Mesh3D.normals(positions, indices);
         // Outward safety for closed shapes (the feedback bug class: inward normals read as
         // consistent winding, light the mesh from inside and give the hull a black shell):
-        // normals must point away from the centroid on average.
-        if (Mesh3D._inward(positions, normals)) {
+        // normals must point away from the centroid on average. keepWinding — merged batches
+        // (Instances3D): many shapes in one mesh have no meaningful common centroid, and the
+        // per-copy normals are already consistent with the per-copy winding.
+        if (!geo.keepWinding && Mesh3D._inward(positions, normals)) {
             for (let i = 0; i < normals.length; i++) normals[i] = -normals[i];
             for (let t = 0; t < indices.length; t += 3) {
                 const tmp = indices[t + 1]; indices[t + 1] = indices[t + 2]; indices[t + 2] = tmp;
@@ -58,6 +61,9 @@ const Mesh3D = {
         mesh.setNormals(normals);
         const uvs = geo.uvs;
         if (uvs) mesh.setUvs(0, uvs);
+        // Per-part colors of a merged geom (a tree's trunk and tiers): vertex colors multiply
+        // the material diffuse, so one mesh keeps every part's tint in one draw call.
+        if (geo.colors) mesh.setColors(Float32Array.from(geo.colors), 3);
         mesh.setIndices(indices);
         mesh.update(pc.PRIMITIVE_TRIANGLES);
 
@@ -67,6 +73,12 @@ const Mesh3D = {
         const mat = /** @type {ArcMaterial} */ (new pc.StandardMaterial());
         mat.name = name + '-mat';
         mat.diffuse = new pc.Color(...(geo.color || [0.6, 0.6, 0.6]));
+        // pc 2: vertex colors multiply the diffuse through the per-property channel flag.
+        if (geo.colors) {
+            mat.diffuse = new pc.Color(1, 1, 1);
+            mat.diffuseVertexColor = true;
+            mat.diffuseVertexColorChannel = 'rgb';
+        }
         node.render.meshInstances = [new pc.MeshInstance(mesh, mat, node)];
         return node;
     },
@@ -221,11 +233,17 @@ const Procedural3D = {
         return out;
     },
 
-    // Concatenate single-material geoms into one: colors collapse to the first (the toon
-    // bands carry the shape), positions stay in world space.
+    // Concatenate single-material geoms into one; positions stay in the model's own space.
+    // Every part keeps ITS color as a per-vertex color (Mesh3D.build turns them into vertex
+    // colors): a tree is a brown trunk under green tiers, not one flat brown lump. `color`
+    // stays as the first part's — the material's fallback where vertex colors are off.
     _merge(parts) {
-        const positions = [];
-        for (const p of parts) positions.push(...p.positions);
-        return { positions, color: parts[0].color };
+        const positions = [], colors = [];
+        for (const p of parts) {
+            positions.push(...p.positions);
+            const c = p.color || [0.6, 0.6, 0.6];
+            for (let i = 0; i < p.positions.length; i += 3) colors.push(c[0], c[1], c[2]);
+        }
+        return { positions, colors, color: parts[0].color };
     }
 };

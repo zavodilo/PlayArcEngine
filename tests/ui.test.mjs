@@ -66,3 +66,39 @@ test('js/UILayout.js набора записан редактором: форм�
   assert.equal(r.ok, true);
   assert.equal(r.src, src);
 });
+
+test('stretch: на растянутой оси x (y) — отступ от обоих краёв, w (h) игнорируется', () => {
+  const W = 1000, H = 600;
+  assert.deepEqual({ ...UI.stretchOf({ kind: 'panel', stretch: 'both' }) }, { h: true, v: true });
+  assert.deepEqual({ ...UI.stretchOf({ kind: 'panel', stretch: 'h' }) }, { h: true, v: false });
+  assert.deepEqual({ ...UI.stretchOf({ kind: 'text', stretch: 'both' }) }, { h: false, v: false }, 'text не растягивается');
+  assert.deepEqual({ ...UI.stretchOf({ kind: 'panel', stretch: '' }) }, { h: false, v: false });
+  // On a stretched axis the anchor does not matter: x is the inset from BOTH edges.
+  for (const anchor of ['top-left', 'top-right', 'bottom-center']) {
+    assert.deepEqual({ ...UI.resolve({ kind: 'panel', anchor, stretch: 'both', x: 10, y: 20 }, 999, 999, W, H) }, { left: 10, top: 20 }, anchor);
+  }
+  // A free axis keeps the anchor math.
+  assert.deepEqual({ ...UI.resolve({ kind: 'panel', anchor: 'bottom-right', stretch: 'h', x: 10, y: 20 }, 100, 50, W, H) }, { left: 10, top: 530 });
+});
+
+test('parent: цепочка, отсутствующий родитель и цикл дают null — запись падает на экран, а не ломает дерево', () => {
+  const saved = UI.elements;
+  try {
+    UI.elements = new Map();
+    const p = { def: { id: 'p', kind: 'panel' } };
+    const c = { def: { id: 'c', kind: 'text', parent: 'p' } };
+    const g = { def: { id: 'g', kind: 'text', parent: 'c' } };
+    UI.elements.set('p', p); UI.elements.set('c', c); UI.elements.set('g', g);
+    assert.equal(UI.parentOf(c.def), p);
+    assert.equal(UI.parentOf(g.def), c);
+    assert.equal(UI.parentOf(p.def), null, 'без parent — экран');
+    assert.equal(UI.isInside(g.def, 'p'), true, 'вложен через цепочку');
+    assert.equal(UI.isInside(g.def, 'zzz'), false);
+    UI.elements.set('zz', { def: { id: 'zz', kind: 'panel', parent: 'zz2' } });   // parent does not exist
+    assert.equal(UI.parentOf(UI.elements.get('zz').def), null);
+    const a = { def: { id: 'a', kind: 'panel', parent: 'b' } }, b = { def: { id: 'b', kind: 'panel', parent: 'a' } };
+    UI.elements.set('a', a); UI.elements.set('b', b);
+    assert.equal(UI.parentOf(a.def), null, 'цикл — экран');
+    assert.equal(UI.parentOf(b.def), null, 'цикл — экран');
+  } finally { UI.elements = saved; }
+});

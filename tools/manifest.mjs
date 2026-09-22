@@ -66,19 +66,29 @@ const objectFields = {
     rot: { type: 'number[3]', required: true, note: 'degrees [tilt-x, heading, tilt-z]; heading 0 — along +x, 90 — down the map' },
     scale: { type: 'number[3]', required: true, note: 'per axis, > 0 (1 cm in the file = 1 px)' },
     anim: { type: 'object', required: false, note: "FBX part spin: { part, axis: 'x'|'-x'|'y'|… , speed: rpm, dir: 'cw'|'ccw' }" },
-    clip: { type: 'string', required: false, note: 'looped GLB animation clip (idle, run…); none — rest pose' }
+    clip: { type: 'string', required: false, note: 'looped GLB animation clip (idle, run…); none — rest pose' },
+    sound: { type: 'object', required: false, note: "a sound of assets/sounds at the object: { src, volume?, loop?, falloffMin?, falloffMax? } — heard while the camera is inside its falloff sphere (Sound3D, skill 'sound')" },
+    tag: { type: 'string', required: false, note: 'a group name for game code: location.findByTag(tag)' },
+    hidden: { type: 'boolean', required: false, note: 'placed but not in the scene (and silent) until location.setHidden(rec, false)' },
+    fallback: { type: 'string', required: false, note: "procedural stand-in when the model is missing/unreadable ('tree'|'rock'|'crate'|'box'|'pole'); absent — guessed from the path" }
 };
 
 // --- UI_LAYOUT record kinds (the canon: UI.DEFAULTS) ---------------------------
 const uiKinds = {
-    text: { anchor: 'top-left', x: 20, y: 20, text: 'Text', fontSize: 24, color: '#ffffff', shadow: '#000000', alpha: 1, visible: 1 },
-    panel: { anchor: 'top-left', x: 20, y: 20, w: 240, h: 80, fill: '#10202c', border: '', radius: 10, alpha: 0.7, visible: 1 },
-    bar: { anchor: 'top-left', x: 20, y: 20, w: 240, h: 18, value: 0.6, color: '#5ad05a', fill: '#10202c', border: '#ffffff', radius: 9, alpha: 1, visible: 1 },
-    button: { anchor: 'bottom-center', x: 0, y: 40, w: 180, h: 48, text: 'Button', fontSize: 20, color: '#ffffff', fill: '#2a6fb0', border: '', radius: 10, alpha: 1, visible: 1 }
+    text: { parent: '', anchor: 'top-left', x: 20, y: 20, text: 'Text', fontSize: 24, color: '#ffffff', shadow: '#000000', alpha: 1, visible: 1 },
+    panel: { parent: '', anchor: 'top-left', x: 20, y: 20, w: 240, h: 80, stretch: '', fill: '#10202c', border: '', radius: 10, alpha: 0.7, visible: 1 },
+    bar: { parent: '', anchor: 'top-left', x: 20, y: 20, w: 240, h: 18, stretch: '', value: 0.6, color: '#5ad05a', fill: '#10202c', border: '#ffffff', radius: 9, alpha: 1, visible: 1 },
+    button: { parent: '', anchor: 'bottom-center', x: 0, y: 40, w: 180, h: 48, stretch: '', text: 'Button', fontSize: 20, color: '#ffffff', fill: '#2a6fb0', border: '', radius: 10, alpha: 1, visible: 1 }
+};
+const uiOptional = {
+    parent: { type: 'string', kinds: 'all', note: "id of the element this one sits in (''/absent — the screen): anchor, x, y count from the parent's box, the parent clips it and hides it together with itself" },
+    stretch: { type: "'h'|'v'|'both'", kinds: 'panel, bar, button', note: 'fill the container on that axis: x (y) is the inset from both edges, w (h) is ignored' }
 };
 
 const api = {
     spawn: 'Scene.spawn(model, opts) -> handle { name, def, loaded } ; opts: { name?, kind?, x?, y?, h?, heading?, rot?, scale?, clip? }',
+    scatter: "Scene.scatter(def) -> handle { name, count, batches, setAll(items), removeAll() } ; def: { count, kind?|geometry?, at {x,y,r}|area {x,y,w,h}|grid {x,y,w,h,cols,rows,jitter}, scale? n|[min,max], heading? rad|'random', seed?, align? 'terrain'|'flat', group? 'prop'|'actor', name?, ink?, outline? } — static copies baked into one mesh per batch (Instances3D)",
+    queryScatter: 'Scene.queryScatter() -> [{ name, source, count, batches, seed }]',
     move: 'Scene.move(name, patch) -> handle ; patch fields of def (x, y, h, heading, rot, scale, clip, kind)',
     remove: 'Scene.remove(name) -> boolean',
     query: 'Scene.query(filter?) -> plain JSON snapshots [{ name, model, kind, x, y, h, rot, scale, clip, loaded, error }]',
@@ -89,7 +99,7 @@ const api = {
 
 const schema = {
     kit: 'ArcEngine',
-    schemaVersion: 1,
+    schemaVersion: 2,
     gameVersion: gv ? gv[1] : '0.0.0',
     engine: 'PlayCanvas 2 (libs/playcanvas.min.js, WebGL2)',
     coordinates: {
@@ -98,7 +108,7 @@ const schema = {
     },
     constants,
     object: { fields: objectFields },
-    ui: { kinds: uiKinds, anchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'] },
+    ui: { kinds: uiKinds, optional: uiOptional, anchors: ['top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'] },
     api
 };
 

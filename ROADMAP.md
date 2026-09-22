@@ -13,13 +13,17 @@
     └── движковые скиллы @playcanvas/skills (MIT, вендор)
 `
 
-## Текущее состояние (после PR #1–#5, main)
+## Текущее состояние (после PR #1–#11, main)
   * Движок перенесён с Babylon.js 9.26 на PlayCanvas 2.22 (`libs/playcanvas.min.js`, UMD, WebGL2): toon-чанки `StandardMaterial` (цветные тени, полосы, rim), чернильные рёбра, inverted-hull контур, слои WORLD/OVERLAY/ACTOR, тени directional light.
   * Координатное соглашение: мир движка — зеркало карты по X (левосторонний PlayCanvas против правосторонней карты); игровая математика осталась в координатах карты (скилл `world3d`).
   * Фаза A (база, PR #3): sync-skills и точки входа агентов (`.claude/skills/`, `.agents/skills/`, `.cursor/rules/`, `AGENTS.md`), вендор `@playcanvas/skills` **v0.3.0**, NOTICE/README.
   * Фаза B (база, PR #4): `Scene.spawn/move/remove/query/inspect/follow/manifest` + `js/SceneSchema.js` (GENERATED), контрактные тесты, headless-сессия агента.
   * Фаза C (база, PR #5): `create-arcengine` (стартеры kit/empty/survival, npm bin, zero deps).
   * Ниже — ДЕЛЬТА к базе: фаза A+ (`agent-manifest.json`), фаза B+ (транзакции `Edit.*`, `Kit.*`/`UI.*`/`Asset.*`, `Scene.seed`, профили check `--render/--visual/--all`, visual gate).
+  * PR #9 (main): security editor server + machine-readable verification (`Debug3D.assert*/capture`, `Scene.inspect` фильтры, gate `--json`).
+  * PR #10 (main): фидбек с полей — `Procedural3D` (box/crate/tree/rock/pole + fallback моделей), диффузные текстуры FBX, ловушки pc (dangling MI в кастомных слоях, refCount общих мешей, `setLocalScale`), `Debug3D.softwareGL`.
+  * PR #11: звук — `Sound3D` (Web Audio), `def.sound/tag/hidden`, `findByTag/setHidden`, шаги в `Game.js`, `AUDIO_*`, скилл `sound`; и максимум порта upstream v1.1: вложенность (`parent`) и растяжение (`stretch`) UI, `Scene.scatter` + `js/Instances3D.js` (свой дизайн под pc: в pc 2 нет thin-instance API — копии ВЫПЕКАЮТСЯ в общие меши, один draw call на партию, статика; движущиеся — сущности), вкладка Sound редактора (микшер + файлы `assets/sounds` + сферы затухания на виде), тур для новичка (`onboarding.js`), слайдер скорости камеры, editor API v20. Скилл `scatter`, манифест-схема v2. Не портировано осознанно: рендер-твики апстрима (свои оттюненные toon/ink/outline).
+  * PR #12 (следом): опциональный `js/Voxel3D.js` — воксельные объёмы поверх `Mesh3D.build` (чанки + отсечение скрытых граней), `Scene.voxel.*`; toon-вид остаётся по умолчанию, воксели — opt-in инструмент уровня.
 
 ## Лицензии и атрибуция
 Компонент  | Лицензия  | Использование

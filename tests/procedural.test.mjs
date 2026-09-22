@@ -53,3 +53,14 @@ test('fallback: имя модели определяет процедурный 
     assert.notEqual(Procedural3D.hashName('a'), Procedural3D.hashName('b'));
     assert.equal(Procedural3D.hashName('x'), Procedural3D.hashName('x'));
 });
+
+test('цвета частей: _merge держит их per-vertex, одиночные виды — без colors', () => {
+    const tree = Procedural3D.geometry('tree', 3);
+    assert.ok(tree.colors && tree.colors.length === tree.positions.length, 'цвета по числу вершин');
+    // ствол (первые вершины) коричневый, макушка — зелёная
+    assert.ok(tree.colors[1] < 0.35 && tree.colors[0] > tree.colors[1], 'низ — ствол');
+    const last = tree.colors.length - 3;
+    assert.ok(tree.colors[last + 1] > tree.colors[last], 'верх — зелень');
+    const box = Procedural3D.geometry('box', 1);
+    assert.ok(!box.colors && box.color, 'одиночный вид — один цвет материала');
+});

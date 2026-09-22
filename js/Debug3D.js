@@ -45,7 +45,7 @@ const Debug3D = {
     // ancient GPUs. Games use it for VISUAL LEVELS (feedback: heavy GLB do not run in
     // headless): lower shadow map, skip hulls/ink, procedural stand-ins instead of GLB.
     softwareGL() {
-        const W = /** @type {any} */ (window).World3D;
+        const W = typeof World3D !== 'undefined' ? /** @type {any} */ (World3D) : null;
         const gl = W && W.app && W.app.graphicsDevice && /** @type {any} */ (W.app.graphicsDevice).gl;
         if (!gl || !gl.getExtension) return false;
         const ext = gl.getExtension('WEBGL_debug_renderer_info');
@@ -321,7 +321,7 @@ const Debug3D = {
         const rec = this._rec(name);
         if (!rec) return { ok: false, code: 'no-object', details: { name } };
         if (!rec.mesh) return { ok: false, code: 'not-loaded', details: { name, error: rec.error } };
-        const view = /** @type {any} */ (window).World3D.view;
+        const view = typeof World3D !== 'undefined' ? /** @type {any} */ (World3D).view : null;
         const t = /** @type {any} */ (window).app.location.terrain;
         const d = rec.def;
         const ground = t ? t.heightAt(d.x, d.y) : 0;
@@ -335,7 +335,7 @@ const Debug3D = {
     assertInFrame(name) {
         const rec = this._rec(name);
         if (!rec) return { ok: false, code: 'no-object', details: { name } };
-        const view = /** @type {any} */ (window).World3D.view;
+        const view = typeof World3D !== 'undefined' ? /** @type {any} */ (World3D).view : null;
         if (!view) return { ok: false, code: 'no-view', details: { name } };
         view.refreshMatrices();
         const d = rec.def;
@@ -358,7 +358,7 @@ const Debug3D = {
 
     // Render now and hand back the frame: the agent LOOKS at the result of its edit.
     capture() {
-        const W = /** @type {any} */ (window).World3D;
+        const W = typeof World3D !== 'undefined' ? /** @type {any} */ (World3D) : null;
         if (!W || !W.canvas) return { ok: false, code: 'no-canvas' };
         W.renderFrame();
         const c = W.canvas;

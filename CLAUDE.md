@@ -12,8 +12,11 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 анимации), HUD из `UILayout.js` и пример игры `Game.js`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
 «свободная/игровая», toon вкл/выкл, вкладка Global Settings (все глобальные настройки,
 сохранение в `Constants.js`), вкладка Objects (импорт FBX/GLB, гизмо, свойства объектов,
-анимация — вращение части или клип, сохранение в `Objects.js`) и вкладка UI (раскладка
-игрового интерфейса: драг и ресайз поверх вида, сохранение в `UILayout.js`).
+анимация — вращение части или клип, тег и скрытие, звук объекта со сферами затухания,
+сохранение в `Objects.js`), вкладка UI (раскладка игрового интерфейса: драг и ресайз поверх
+вида, вложенность и растяжение, сохранение в `UILayout.js`) и вкладка Sound (микшер `AUDIO_*`
+и файлы `assets/sounds` — клик прослушивает). При первом запуске редактор показывает тур
+для новичка (кнопка «?»).
 
 ## Скиллы — читать до правки кода
 
@@ -27,7 +30,8 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 | ЛЮБОЙ звук: эффект, музыка, звук объекта локации, `js/Sound3D.js`, поле `sound` в `Objects.js`, константы `AUDIO_*`, файлы в `assets/sounds` | `claude/skills/sound/SKILL.md` |
 | `_utils/`, редактор, инспектор, вкладка Objects, новая константа в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
-| своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер, thin instances и процедурная расстановка; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
+| сотни одинаковых объектов (лес, камни, столбы, трава, завалы): `Scene.scatter`, `js/Instances3D.js` (выпечка копий в общие меши — один draw call на партию), цена кадра на draw calls | `claude/skills/scatter/SKILL.md` |
+| своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
 | проверка правки глазами и числами: панель браузера, `Debug3D` (удержание вида, кадры без rAF, замер, линтер сцены, отладочные режимы), замер цены кадра, воспроизведение состояния пользователя | `claude/skills/verify/SKILL.md` |
 
 ## Запуск и сборка
@@ -101,7 +105,8 @@ js/               код игры — классические скрипты:
   Objects.js      LOCATION_OBJECTS — объекты локации (модель .fbx/.glb, вид, x/y/h, rot [x,y,z], scale [x,y,z],
                   anim — вращение части, clip — клип GLB, tag — группа для кода, hidden — скрыт до
                   setHidden, sound — звук на месте объекта); пишет редактор
-  UILayout.js     UI_LAYOUT — раскладка интерфейса игры (id, вид, якорь, x/y, размеры, цвета); пишет редактор
+  UILayout.js     UI_LAYOUT — раскладка интерфейса игры (id, вид, якорь, x/y, размеры, цвета, parent —
+                  вложенность, stretch — растяжение по осям контейнера); пишет редактор
   World3D.js      движок: init/renderFrame, View3D (камера, свет, тени, проекции), cfg(),
                   toon-шейдер ArcToonPlugin, контур рёбер, обводка силуэта, addObject
   Terrain3D.js    земля: поле высот из шума, сетка + кольцо за краем, heightAt/tiltAt
@@ -109,8 +114,12 @@ js/               код игры — классические скрипты:
                   текстуры FBX (Video/Content/OP-связи) -> material.texture = { path, bytes }; .glb уходит в Gltf3D
   Procedural3D.js процедурные заглушки без файлов: KINDS (box/crate/tree/rock/pole), geometry(kind, seed),
                   spawn(view, kind, opts); Mesh3D.build — нормали в МИРОВОМ пространстве + правка winding
-                  (against ≈ 0) + outward-safety; Location3D берёт их при отсутствующей модели (def.fallback,
-                  rec.fallbackUsed)
+                  (against ≈ 0) + outward-safety (keepWinding — для слитых партий); Location3D берёт их при
+                  отсутствующей модели (def.fallback, rec.fallbackUsed)
+  Instances3D.js  статичные копии одной геометрии: scatterPoints (чистая раскладка — at/area/grid, scale,
+                  heading, seed) + bake (зеркало (-x, h, y), поворот как rotQuat(0,-θ,0), нормали через
+                  обратный масштаб, партии по MAX_BATCH_VERTS) — один draw call на партию; Scene.scatter —
+                  семантическая обёртка (скилл scatter)
   Gltf3D.js       модели glTF/GLB: скелет, текстуры, PBR -> StandardMaterial под toon; Clips3D — клипы анимации
                   (Model3D.clips(root).play('run') с плавным переходом)
   Sound3D.js      звук (Web Audio, без зависимостей): эффекты Sound3D.play(src, opts), музыка music(src),
@@ -123,6 +132,7 @@ js/               код игры — классические скрипты:
   SceneAPI.js     семантический слой для агентов и игр: Scene.spawn/move/remove/query/inspect/
                   follow/manifest, транзакции Edit.begin/…/commit/rollback с журналом,
                   Kit.* (state, frame-хуки, часы), UI.query/patch, Asset.preload/list/loaded,
+                  Scene.scatter/queryScatter (статичные копии — Instances3D),
                   Scene.seed/random (детерминизм агентских операций) — всё с валидацией
                   по SCENE_SCHEMA до кадра; агентский код не трогает pc.* (тест apigate)
   CameraControl.js CameraController: цель/азимут/наклон/зум, мышь, клавиши, тач; игровой и свободный режимы
@@ -207,6 +217,8 @@ Survival-стартер — образцовый пользователь сем
    мире: `setPosition(-x, h, y)`).
 3. Декларативно (агенты и быстрые прототипы): `Scene.spawn(model, opts)`, `Scene.move(name, patch)`,
    `Scene.query()`, `await Scene.inspect()` — валидация по манифесту, ошибки читабельны без кадра.
+   Сотни одинаковых статичных объектов (лес, камни, столбы) — `Scene.scatter(def)` (скилл
+   `scatter`): копии выпекаются в общие меши, один draw call на партию.
 4. Персонаж с анимацией — модель `.glb`: `Model3D.clips(mesh).play('run')`, переход между клипами —
    сам (скилл `world3d`). Поворот сущности — `World3D.rotQuat` / `eulerFromQuat`. Камера за героем —
    `app.camera.follow(obj)` (объект с полями `x`, `y`).
@@ -215,7 +227,7 @@ Survival-стартер — образцовый пользователь сем
 
 ## Чего в наборе нет
 
-Звука, физики и коллизий, готовых игрока и противника (`Game.js` — только образец места для
+Физики и коллизий, готовых игрока и противника (`Game.js` — только образец места для
 логики), текстур и скелета у FBX (`Model3D` — геометрия и цвета материалов бинарного FBX, центр
 и оси частей; скелет, клипы и текстуры — только в GLB), картинок и привязки к точке мира в UI
 (виды элементов — текст, панель, шкала, кнопка), нескольких сцен/уровней

@@ -5,7 +5,7 @@
 /** @satisfies {Record<string, any>} */
 const SCENE_SCHEMA = {
     "kit": "ArcEngine",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "gameVersion": "0.1.0",
     "engine": "PlayCanvas 2 (libs/playcanvas.min.js, WebGL2)",
     "coordinates": {
@@ -997,12 +997,33 @@ const SCENE_SCHEMA = {
                 "type": "string",
                 "required": false,
                 "note": "looped GLB animation clip (idle, run…); none — rest pose"
+            },
+            "sound": {
+                "type": "object",
+                "required": false,
+                "note": "a sound of assets/sounds at the object: { src, volume?, loop?, falloffMin?, falloffMax? } — heard while the camera is inside its falloff sphere (Sound3D, skill 'sound')"
+            },
+            "tag": {
+                "type": "string",
+                "required": false,
+                "note": "a group name for game code: location.findByTag(tag)"
+            },
+            "hidden": {
+                "type": "boolean",
+                "required": false,
+                "note": "placed but not in the scene (and silent) until location.setHidden(rec, false)"
+            },
+            "fallback": {
+                "type": "string",
+                "required": false,
+                "note": "procedural stand-in when the model is missing/unreadable ('tree'|'rock'|'crate'|'box'|'pole'); absent — guessed from the path"
             }
         }
     },
     "ui": {
         "kinds": {
             "text": {
+                "parent": "",
                 "anchor": "top-left",
                 "x": 20,
                 "y": 20,
@@ -1014,11 +1035,13 @@ const SCENE_SCHEMA = {
                 "visible": 1
             },
             "panel": {
+                "parent": "",
                 "anchor": "top-left",
                 "x": 20,
                 "y": 20,
                 "w": 240,
                 "h": 80,
+                "stretch": "",
                 "fill": "#10202c",
                 "border": "",
                 "radius": 10,
@@ -1026,11 +1049,13 @@ const SCENE_SCHEMA = {
                 "visible": 1
             },
             "bar": {
+                "parent": "",
                 "anchor": "top-left",
                 "x": 20,
                 "y": 20,
                 "w": 240,
                 "h": 18,
+                "stretch": "",
                 "value": 0.6,
                 "color": "#5ad05a",
                 "fill": "#10202c",
@@ -1040,11 +1065,13 @@ const SCENE_SCHEMA = {
                 "visible": 1
             },
             "button": {
+                "parent": "",
                 "anchor": "bottom-center",
                 "x": 0,
                 "y": 40,
                 "w": 180,
                 "h": 48,
+                "stretch": "",
                 "text": "Button",
                 "fontSize": 20,
                 "color": "#ffffff",
@@ -1053,6 +1080,18 @@ const SCENE_SCHEMA = {
                 "radius": 10,
                 "alpha": 1,
                 "visible": 1
+            }
+        },
+        "optional": {
+            "parent": {
+                "type": "string",
+                "kinds": "all",
+                "note": "id of the element this one sits in (''/absent — the screen): anchor, x, y count from the parent's box, the parent clips it and hides it together with itself"
+            },
+            "stretch": {
+                "type": "'h'|'v'|'both'",
+                "kinds": "panel, bar, button",
+                "note": "fill the container on that axis: x (y) is the inset from both edges, w (h) is ignored"
             }
         },
         "anchors": [
@@ -1069,6 +1108,8 @@ const SCENE_SCHEMA = {
     },
     "api": {
         "spawn": "Scene.spawn(model, opts) -> handle { name, def, loaded } ; opts: { name?, kind?, x?, y?, h?, heading?, rot?, scale?, clip? }",
+        "scatter": "Scene.scatter(def) -> handle { name, count, batches, setAll(items), removeAll() } ; def: { count, kind?|geometry?, at {x,y,r}|area {x,y,w,h}|grid {x,y,w,h,cols,rows,jitter}, scale? n|[min,max], heading? rad|'random', seed?, align? 'terrain'|'flat', group? 'prop'|'actor', name?, ink?, outline? } — static copies baked into one mesh per batch (Instances3D)",
+        "queryScatter": "Scene.queryScatter() -> [{ name, source, count, batches, seed }]",
         "move": "Scene.move(name, patch) -> handle ; patch fields of def (x, y, h, heading, rot, scale, clip, kind)",
         "remove": "Scene.remove(name) -> boolean",
         "query": "Scene.query(filter?) -> plain JSON snapshots [{ name, model, kind, x, y, h, rot, scale, clip, loaded, error }]",

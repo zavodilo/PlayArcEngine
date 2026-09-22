@@ -137,11 +137,77 @@ const Scene = {
     },
 
     remove(name) {
+        const sc = Scene._scatters.get(name);
+        if (sc) { sc.instances.dispose(); Scene._scatters.delete(name); return true; }
         const loc = this._location();
         const rec = loc.objects.find(r => r.def.name === name);
         if (!rec) return false;
         loc.removeObject(rec);
         return true;
+    },
+
+    // --- scatter: many static copies of one geometry, baked (Instances3D) ---------
+
+    /** name -> { name, instances, source, seed } */
+    _scatters: new Map(),
+
+    _uniqueScatter(base) {
+        const names = new Set(this._location().objects.map(r => r.def.name));
+        for (const n of Scene._scatters.keys()) names.add(n);
+        const stem = String(base || 'scatter').replace(/-\d+$/, '');
+        if (!names.has(stem)) return stem;
+        for (let i = 2; ; i++) if (!names.has(stem + '-' + i)) return stem + '-' + i;
+    },
+
+    // def — { count, kind? ('box'|'crate'|'tree'|'rock'|'pole') | geometry? ({ positions,
+    // color? }), and ONE placement of
+    //   at:   { x, y, r }                          — a circle around the point;
+    //   area: { x, y, w, h }                       — a rect centered at the point;
+    //   grid: { x, y, w, h, cols, rows, jitter }   — a centered lattice, jitter 0..1 of a cell;
+    // scale? — a number or [min, max] per copy; heading? — radians or 'random';
+    // seed? — its own RNG stream (default: the session's Scene.random);
+    // align? — 'terrain' (default: every copy stands on the ground) | 'flat' (h = def.h || 0);
+    // group? — 'prop' (default) | 'actor'; name?; ink?, outline?, castShadow?,
+    // receiveShadows? — the World3D.addObject flags of the baked batches }.
+    // The copies are MERGED into a few big meshes: one draw call per batch with the usual
+    // toon, shadow, ink and outline. They are static: handle.setAll(items) re-bakes after an
+    // occasional change; per-frame movers are entities (Scene.spawn).
+    // The handle: { name, count, batches, setAll(items), removeAll() }.
+    scatter(def) {
+        const d = def || {};
+        const loc = this._location();
+        if (!loc.view) throw new Error('Scene.scatter: the 3D world is not up yet');
+        const count = Math.floor(Number(d.count) || 0);
+        if (count <= 0) throw new Error('Scene.scatter: count must be > 0');
+        if (!d.at && !d.area && !d.grid) throw new Error('Scene.scatter: one of at {x,y,r}, area {x,y,w,h} or grid {…,cols,rows} is required');
+        if (!d.kind && !d.geometry) throw new Error("Scene.scatter: kind ('tree'|'rock'|'crate'|'box'|'pole') or geometry { positions } is required");
+        const name = d.name ? String(d.name) : this._uniqueScatter('scatter');
+        if (Scene._scatters.has(name)) throw new Error('Scene: a scatter named ' + JSON.stringify(name) + ' already exists');
+        const rnd = d.seed != null ? Scene._mulberry(d.seed) : Scene._prng;
+        const items = Instances3D.scatterPoints(d, rnd);
+        const terrain = d.align === 'flat' || !loc.terrain || typeof loc.terrain.heightAt !== 'function' ? null : loc.terrain;
+        for (const it of items) it.h = terrain ? terrain.heightAt(it.x, it.y) : Number(d.h) || 0;
+        const inst = new Instances3D(loc.view, d.geometry || d.kind, d.group === 'actor' ? 'actor' : 'prop', items, {
+            name: name, seed: d.seed == null ? undefined : Number(d.seed),
+            ink: d.ink, outline: d.outline, castShadow: d.castShadow, receiveShadows: d.receiveShadows
+        });
+        if (!inst.ok) { throw new Error('Scene.scatter: the geometry is empty (kind ' + JSON.stringify(d.kind) + ')'); }
+        Scene._scatters.set(name, { name: name, instances: inst, source: d.geometry ? 'geometry' : String(d.kind), seed: d.seed == null ? null : Number(d.seed) });
+        return {
+            name: name,
+            count: inst.count,
+            batches: inst.nodes.length,
+            setAll: (its) => { inst.setAll(its); return inst.count; },
+            removeAll: () => Scene.remove(name)
+        };
+    },
+
+    /** Every live scatter: [{ name, source, count, batches, seed }]. */
+    queryScatter() {
+        return [...Scene._scatters.values()].map(sc => ({
+            name: sc.name, source: sc.source, count: sc.instances.count,
+            batches: sc.instances.nodes.length, seed: sc.seed
+        }));
     },
 
     follow(name) {
@@ -189,11 +255,12 @@ const Scene = {
         const entities = area
             ? snaps.filter(sn => sn.x >= area[0] && sn.y >= area[1] && sn.x <= area[2] && sn.y <= area[3])
             : snaps;
-        const view = /** @type {any} */ (window).World3D ? /** @type {any} */ (window).World3D.view : null;
+        // Kit globals are classic-script consts (script scope, not window.*) — bare typeof.
+        const view = typeof World3D !== 'undefined' ? World3D.view : null;
         let findings = [];
         let triangles = 0;
-        if (view && /** @type {any} */ (window).Debug3D) {
-            const r = await /** @type {any} */ (window).Debug3D.lint(view, { silent: true, frame: false });
+        if (view && typeof Debug3D !== 'undefined') {
+            const r = await Debug3D.lint(view, { silent: true, frame: false });
             findings = r.findings;
             triangles = r.stats ? r.stats.triangles : 0;
         }
@@ -203,9 +270,10 @@ const Scene = {
         return {
             objects: snaps.length,
             loaded: snaps.filter(sn => sn.loaded).length,
+            scatters: Scene.queryScatter(),
             errors: snaps.filter(sn => sn.error).map(sn => ({ name: sn.name, error: sn.error })),
             triangles: triangles,
-            fps: /** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0,
+            fps: typeof World3D !== 'undefined' ? Math.round(World3D.fps()) : 0,
             findings: findings,
             entities: entities.map(sn => ({
                 id: sn.name, kind: sn.kind, model: sn.model,
@@ -232,14 +300,20 @@ const Scene = {
     /** @param {number} [n] */
     seed(n) {
         Scene._seed = Number.isFinite(n) ? (n >>> 0) : 1;
-        let a = Scene._seed;
-        Scene._prng = () => {           // mulberry32: tiny, stable, good enough for tests
+        Scene._prng = Scene._mulberry(Scene._seed);
+        return Scene._seed;
+    },
+
+    // mulberry32: tiny, stable, good enough for tests — the session stream and a scatter
+    // with its own def.seed both run on it.
+    _mulberry(seed) {
+        let a = Number(seed) >>> 0;
+        return () => {
             a |= 0; a = (a + 0x6D2B79F5) | 0;
             let t = Math.imul(a ^ (a >>> 15), 1 | a);
             t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
-        return Scene._seed;
     },
 
     /** Stable [0, 1) pseudo-random for agent sessions and starters (never Math.random). */
@@ -379,7 +453,7 @@ const Kit = {
     /** Seconds since the game loop started / last frame dt / smoothed fps. */
     time: () => Kit._t,
     dt: () => Kit._dt,
-    fps: () => (/** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0),
+    fps: () => (typeof World3D !== 'undefined' ? Math.round(World3D.fps()) : 0),
 
     // called by the kit loop (main.js) — not part of the agent contract
     _run(dt) {

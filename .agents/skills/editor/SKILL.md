@@ -1,6 +1,6 @@
 ---
 name: editor
-description: The kit's web editor (_utils/editor) — location view with free/game cameras, toon toggle, Global Settings tab (constants inspector from schema.js, saves to Constants.js), Objects tab (location objects in Objects.js — FBX/GLB import into assets/models, properties, gizmo, part spin or animation clip), UI tab (game interface layout in UILayout.js — skill ui), EN/RU interface language (i18n.js), live editing via loader.js, server.mjs API. Read before editing files in _utils/, before adding a constant to the inspector and before adding interface text.
+description: The kit's web editor (_utils/editor) — location view with free/game cameras, toon toggle, Global Settings tab (constants inspector from schema.js, saves to Constants.js), Objects tab (location objects in Objects.js — FBX/GLB import into assets/models, properties, gizmo, tag/hidden, sound of an object, part spin or animation clip), UI tab (game interface layout in UILayout.js — skill ui), Sound tab (AUDIO_* mixer + the files of assets/sounds — skill sound), the welcome tour (onboarding.js), EN/RU interface language (i18n.js), live editing via loader.js, server.mjs API. Read before editing files in _utils/, before adding a constant to the inspector and before adding interface text.
 ---
 
 # Editor (`_utils/editor`)
@@ -17,19 +17,21 @@ game: it does not go into the build (`BUILD_EXCLUDE`), and the game knows nothin
 
 | File | What |
 |---|---|
-| `server.mjs` | static files from the project ROOT (no-store) + `GET /api/status`, `POST /api/save-constants`, `/api/save-objects`, `/api/save-ui`, `/api/pick-model`, `/api/import-model`. `EDITOR_API_VERSION` |
-| `save.mjs` | writing without HTTP: `patchScalar`, `saveConstants(root, changes)`, `formatObjects`, `saveObjects(root, objects)`, `formatUI`, `saveUI(root, elements)` (skill `ui`), backups, `ERRORS`/`failure`, `isModelPath`; covered by `tests/editor-save.test.mjs` and `tests/ui.test.mjs` |
-| `index.html` | header with the language switch `#lang-switch`, view toolbar, canvas `#view-canvas`, right pane with tabs `#pane-tabs` (`.pane-panel[data-tab]`: settings, objects, ui); script order: `i18n.js`, `schema.js`, `loader.js`, kit modules (`/libs/playcanvas.min.js`, `/js/Objects.js`, `/js/UILayout.js`, `/js/World3D.js` … `/js/Model3D.js`, `/js/Gltf3D.js`, `/js/Location3D.js`, `/js/UI.js`; no `Game.js` — the editor does not run the game), `inspector.js`, `objects-panel.js`, `ui-panel.js`, `lab.js`, `main.js` |
+| `server.mjs` | static files from the project ROOT (no-store) + `GET /api/status`, `GET /api/sounds` (the files of `assets/sounds` for the object sound fields and the Sound tab), `POST /api/save-constants`, `/api/save-objects`, `/api/save-ui`, `/api/pick-model`, `/api/import-model`. `EDITOR_API_VERSION` (now 20) |
+| `save.mjs` | writing without HTTP: `patchScalar`, `saveConstants(root, changes)`, `formatObjects`, `saveObjects(root, objects)` (record fields `tag`, `hidden`, `sound` — skill `sound`), `formatUI`, `saveUI(root, elements)` (records `parent`, `stretch` — skill `ui`), backups, `ERRORS`/`failure`, `isModelPath`, `isSoundPath`; covered by `tests/editor-save.test.mjs` and `tests/ui.test.mjs` |
+| `index.html` | header with the language switch `#lang-switch` and the tour button `#btn-help`, view toolbar (toon / UI / sound checkboxes, the camera speed chip `#view-speed`), canvas `#view-canvas`, right pane with tabs `#pane-tabs` (`.pane-panel[data-tab]`: settings, objects, ui, sound), the tour overlay `#onboarding`; script order: `i18n.js`, `schema.js`, `loader.js`, kit modules (`/libs/playcanvas.min.js`, `/js/Objects.js`, `/js/UILayout.js`, `/js/Sound3D.js`, `/js/World3D.js` … `/js/Model3D.js`, `/js/Gltf3D.js`, `/js/Procedural3D.js`, `/js/Instances3D.js`, `/js/Location3D.js`, `/js/UI.js`; no `Game.js` — the editor does not run the game), `inspector.js`, `objects-panel.js`, `sound-panel.js`, `ui-panel.js`, `lab.js`, `debug-tools.js`, `onboarding.js`, `main.js` |
 | `i18n.js` | `I18N`: language (EN by default, choice in `localStorage` `arcengine.editor.lang`), dictionaries `STRINGS.en/ru`, `t(key, params)`, `pick({ en, ru })`, markup via `data-i18n*`, `lang-changed` event |
 | `loader.js` | fetches `/js/Constants.js`, replaces `^const` with `var`, runs it through indirect `eval` — constants become writable `window` properties |
 | `schema.js` | `KIT_SCHEMA` — inspector groups and fields, texts `{ en, ru }`; the client's `EDITOR_API_VERSION` |
 | `history.js` | `EditHistory`: undo/redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y) — entries `{ key, undo, redo }`, the same `key` within 800 ms is merged, `batch(fn)` — one step; in text and number fields Ctrl+Z is the browser's own |
-| `inspector.js` | Global Settings tab: fields from the schema, groups collapsed at startup, dirty highlight, ↺, search in both languages, "Save to Constants.js" (Ctrl+S); `Toast` |
-| `objects-panel.js` | `ObjectsPanel` — Objects tab: list of `location.objects`, properties of the selected one, move gizmo, click selection, FBX import, "Save to Objects.js", revert; `PaneTabs` — tabs (`TABS`, `current`, choice in `localStorage` `arcengine.editor.tab`, the window `pane-tab` event on a switch) |
-| `ui-panel.js` | `UIPanel` — UI tab: the game interface (`UILayout.js`) drawn by the game's `UI.js` over the view, drag and resize, properties, "Save to UILayout.js" — skill `ui` |
-| `lab.js` | location view: `Location3D` (objects — a copy of `LOCATION_OBJECTS`) + the game's `CameraController`, camera modes, toon toggle, reaction to edits; frame `tick`: `location.update(dt)` -> `camera.update(dt)` -> `renderFrame()` |
+| `inspector.js` | Global Settings tab: fields from the schema, groups collapsed at startup (a group with `tab: 'sound'` lives on the Sound tab and starts expanded), dirty highlight, ↺, search in both languages, every `[data-role="save-constants"]` / `[data-role="revert-constants"]` button saves/reverts the ONE set of constants, a dirty mark on the tab that holds the change; `Toast` |
+| `objects-panel.js` | `ObjectsPanel` — Objects tab: list of `location.objects` (a click on the selected row deselects, a hidden object is a ghost row), properties of the selected one (Tag, Hidden at start, the Sound section — skill `sound`), move gizmo, click selection, FBX import, the falloff spheres in the view (`syncSpheres`), "Save to Objects.js", revert; `PaneTabs` — tabs (`TABS`, `current`, choice in `localStorage` `arcengine.editor.tab`, the window `pane-tab` event on a switch) |
+| `ui-panel.js` | `UIPanel` — UI tab: the game interface (`UILayout.js`) drawn by the game's `UI.js` over the view, drag and resize, the element tree with "Inside" (parent) and "Stretch" rows, properties, "Save to UILayout.js" — skill `ui` |
+| `sound-panel.js` | `SoundPanel` — Sound tab: owns the list of `assets/sounds` (`GET /api/sounds` at startup and on window focus; the Objects tab reads the same list), a click on a file auditions it through the game's `Sound3D` (the mixer applies), hosts the `AUDIO_*` groups of the schema |
+| `onboarding.js` | `Onboarding` — the welcome tour: six slides (`SLIDES`, a slide can switch the right pane to its tab), the spotlight `#onb-spot` dims the rest, the card carries its own EN/RU switch; opens on the first run (`localStorage` `arcengine.editor.onboarded`), `#btn-help` reopens it, Esc closes |
+| `lab.js` | location view: `Location3D` (`showHidden: true` — a hidden object stays as a ghost; objects — a copy of `LOCATION_OBJECTS`) + the game's `CameraController`, camera modes, toon toggle, the `#opt-sound` checkbox (`Sound3D.setMuted`, sound is OFF by default — the editor is a tool), the camera speed slider (`CAMERA_FLY_SPEED`), reaction to edits; frame `tick`: `location.update(dt)` -> `camera.update(dt)` -> `ObjectsPanel.syncSpheres()` -> `Sound3D.update(camera)` -> `renderFrame()` |
 | `debug-tools.js` | `DebugTools` — the view toolbar's debug corner: the "view:" select (`Debug3D.setMode`: back faces in red, normals, wireframe) and "Lint scene" (`Debug3D.lint`) with a results panel `#lint-panel` over the view. Binds itself on `DOMContentLoaded` — `lab.js` and `main.js` do not know about it; finding texts come from `Debug3D` and stay English |
-| `main.js` | `I18N.init()` -> `EditorLoader.load()` -> `EditHistory.init()` -> `PaneTabs.init()` -> `Inspector.init()` -> wrapper around `Inspector.apply` (`constants-changed` event + history entry; `revertAll` — as one step) -> `Lab.init()` (inside — `ObjectsPanel.init(lab)`, `UIPanel.init(canvas)`) |
+| `main.js` | `I18N.init()` -> `EditorLoader.load()` -> `EditHistory.init()` -> `PaneTabs.init()` -> `Inspector.init()` -> wrapper around `Inspector.apply` (`constants-changed` event + history entry; `revertAll` — as one step) -> `Lab.init()` (inside — `ObjectsPanel.init(lab)`, `UIPanel.init(canvas)`, `SoundPanel.init()`) -> `Onboarding.init()` (last: the tour greets a first run, and only over a working editor) |
 
 Editing a field: `Inspector.apply` writes `window[NAME]` -> `constants-changed` event ->
 `Lab.onConstant(name)` by prefix:
@@ -37,8 +39,9 @@ Editing a field: `Inspector.apply` writes `window[NAME]` -> `constants-changed` 
 | Prefix / name | What happens |
 |---|---|
 | `WORLD3D_*` | `World3D.applyRenderConstants(view)` — light, shadows, materials, toon, ink edges live |
-| `CAMERA_*` | `camera.applyConstants()`; in game mode orientation/start zoom — `home()` right away |
+| `CAMERA_*` | `camera.applyConstants()`; `CAMERA_FLY_SPEED` also syncs the slider over the view; in game mode orientation/start zoom — `home()` right away |
 | `UI_*` | `UIPanel.refresh()` — the interface scale |
+| `AUDIO_*` | `Sound3D.applyConstants()` — the mixer and the common falloff live (skill `sound`) |
 | `MODEL_*`, `GAME_*` | nothing to apply: read when a clip starts / by the game |
 | `LOCATION_GROUND` | `location.loadGround()` |
 | `GROUND_TILE_SIZE` | `terrain.applyTileSize()` |
@@ -61,7 +64,7 @@ are expanded into triples; `anim: { part, axis, speed, dir }` and `clip: '…'` 
 Checks: `model` — `assets/….fbx` or `….glb` in Latin characters without spaces and `..` (`bad_model`),
 numbers finite, scale > 0, `anim.axis` from `x -x y -y z -z`, `anim.speed` ≥ 0 (`bad_value`);
 object name, `anim.part` and `clip` without quotes and control characters (`cleanName`); precision:
-position, angles and speed 0.1, scale 0.001. An old server process silently drops new fields and rejects `.glb` with the old "must be ….fbx" text — restart `editor.bat` (the client warns when `api` < `EDITOR_API_VERSION`, now 19).
+position, angles and speed 0.1, scale 0.001. An old server process silently drops new fields and rejects `.glb` with the old "must be ….fbx" text — restart `editor.bat` (the client warns when `api` < `EDITOR_API_VERSION`, now 20). An old server has no `GET /api/sounds` — the Sound tab simply shows an empty file list until `editor.bat` is restarted.
 
 ## Objects tab
 
@@ -103,8 +106,22 @@ position, angles and speed 0.1, scale 0.001. An old server process silently drop
   drag, field — merged by `field:<index>:<field>`.
 - LMB click without movement (≤ 4 px) on an object mesh — select (`scene.pick` filtered by the
   root's `metadata.locationObject`) and switch to the Objects tab; on empty space — deselect.
+- Tag and Hidden at start (`setOptional`) — game-code fields of the record (skill `sound`
+  for how the game uses them): an empty value removes the field from the record.
+- The "Sound" section (`renderSound`, `setSound`) — a file of `assets/sounds` standing at the
+  object, volume, loop and the two falloff radii; edits are heard at once when `#opt-sound` is
+  on, and the two yellow spheres in the view show the audible volume (`syncSpheres` draws them
+  every frame as batched lines on the gizmo layer — `app.drawLineArrays`, no geometry rebuild).
 - Keys (focus not in a field): Del/Backspace — delete, F — frame it, Ctrl+D — duplicate,
   Esc — deselect, Ctrl+S — save (both Constants.js and Objects.js, whichever changed).
+
+## Sound tab
+
+The `AUDIO_*` groups of the schema carry `tab: 'sound'` — the inspector builds them into
+`#sound-groups` instead of Global Settings (one set of constants: one dirty state, one Save —
+the buttons are `[data-role="save-constants"]` on both tabs). Below is the file list of
+`assets/sounds` (skill `sound`): a click auditions a file through the game's `Sound3D`, so the
+mixer sliders and the mute checkbox are audible right away.
 
 ## Interface language
 

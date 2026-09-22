@@ -105,7 +105,7 @@ silent; `removeObject` and `dispose` stop the sound.
 
 The editor's Objects tab has both radii as **Falloff Min / Falloff Max**, and the view draws them
 around the selected object as two faint yellow WIREFRAME SPHERES — three great circles each,
-like a gizmo (`ObjectsPanel.spheres`, §Sound spheres in the editor skill). What is drawn is what
+like a gizmo (`ObjectsPanel.syncSpheres` — batched lines via `app.drawLineArrays` on the gizmo layer, §Sound spheres in the objects-panel code). What is drawn is what
 is heard: inside the outer sphere the sound plays, outside it is silent. 0 means the common
 `AUDIO_FALLOFF_*` value — most objects keep both at 0 and only the odd one needs its own pair.
 The spheres are drawn only while the view toolbar's "sound" checkbox is on, and that checkbox

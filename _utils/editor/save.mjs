@@ -248,6 +248,10 @@ export const UI_HEADER = `// UILayout.js — the game's UI layout: every HUD ele
 //   kind — 'text' | 'panel' | 'bar' | 'button'; anchor — one of 9 screen points ('top-left' …
 //   'bottom-right'): x, y go from it to the same point of the element (inward from an edge,
 //   signed from the center); w, h — px; numbers are px of a screen UI_REF_HEIGHT tall;
+//   parent (optional) — id of the element this one sits in: anchor, x, y then count from the
+//   parent's box, the parent clips it and hides it together with itself;
+//   stretch (optional) — 'h' | 'v' | 'both': fills the container on that axis, x (y) — the inset
+//   from both edges, w (h) is ignored;
 //   colors — '#rrggbb', '' — none; visible: 0 — hidden until the game calls show().
 //   Records go in drawing order: later — on top.
 `;
@@ -259,20 +263,26 @@ const UI_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 // Fields of a record by kind, in file order — the same set as UI.DEFAULTS in js/UI.js
 // (tests/ui.test.mjs compares them). type: px — a number, size — a number ≥ 0, unit — 0..1,
-// color — '#rrggbb' or '', text — a string, flag — 0 | 1.
+// color — '#rrggbb' or '', text — a string, flag — 0 | 1, id — an element id, stretch — an axis.
+// An empty parent or stretch is not written: the screen and a fixed size are the defaults.
 const UI_TYPES = {
   x: 'px', y: 'px', w: 'size', h: 'size', radius: 'size', fontSize: 'size', value: 'unit', alpha: 'unit',
   color: 'color', fill: 'color', border: 'color', shadow: 'color', text: 'text', visible: 'flag',
+  parent: 'id', stretch: 'stretch',
 };
+const UI_OPTIONAL = ['parent', 'stretch'];
+const UI_STRETCH = ['h', 'v', 'both'];
 export const UI_FIELDS = {
-  text: ['x', 'y', 'text', 'fontSize', 'color', 'shadow', 'alpha', 'visible'],
-  panel: ['x', 'y', 'w', 'h', 'fill', 'border', 'radius', 'alpha', 'visible'],
-  bar: ['x', 'y', 'w', 'h', 'value', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
-  button: ['x', 'y', 'w', 'h', 'text', 'fontSize', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
+  text: ['parent', 'x', 'y', 'text', 'fontSize', 'color', 'shadow', 'alpha', 'visible'],
+  panel: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'fill', 'border', 'radius', 'alpha', 'visible'],
+  bar: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'value', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
+  button: ['parent', 'x', 'y', 'w', 'h', 'stretch', 'text', 'fontSize', 'color', 'fill', 'border', 'radius', 'alpha', 'visible'],
 };
 
 // A field value -> its literal in the file; invalid — null.
 function fmtUIField(type, v) {
+  if (type === 'id') return UI_ID.test(String(v)) ? `'${v}'` : null;
+  if (type === 'stretch') return UI_STRETCH.includes(v) ? `'${v}'` : null;
   if (type === 'text') return JSON.stringify(String(v == null ? '' : v).replace(/[\x00-\x09\x0b-\x1f]/g, '').slice(0, 200));
   if (type === 'color') return v === '' || v == null ? "''" : (UI_COLOR.test(v) ? `'${String(v).toLowerCase()}'` : null);
   if (type === 'flag') return v === 0 || v === false ? '0' : '1';
@@ -294,11 +304,21 @@ export function formatUI(elements) {
     ids.add(e.id);
     const parts = [`id: '${e.id}'`, `kind: '${e.kind}'`, `anchor: '${e.anchor}'`];
     for (const f of fields) {
+      if (UI_OPTIONAL.includes(f) && (e[f] == null || e[f] === '')) continue;
       const lit = fmtUIField(UI_TYPES[f], e[f]);
       if (lit === null) return failure('bad_element', { index: i, field: f });
       parts.push(`${f}: ${lit}`);
     }
     lines.push(`    { ${parts.join(', ')} },\n`);
+  }
+  // A parent is another element of the list, and the chain up from it never comes back.
+  const parentOf = new Map(elements.map(e => [e.id, e.parent || '']));
+  for (let i = 0; i < elements.length; i++) {
+    const seen = new Set([elements[i].id]);
+    for (let id = elements[i].parent; id; id = parentOf.get(id)) {
+      if (!parentOf.has(id) || seen.has(id)) return failure('bad_element', { index: i, field: 'parent' });
+      seen.add(id);
+    }
   }
   return { ok: true, src: UI_HEADER + 'const UI_LAYOUT = [\n' + lines.join('') + '];\n', count: lines.length };
 }

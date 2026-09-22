@@ -55,6 +55,12 @@ interface UIRecord {
     alpha?: number;
     /** 0 — hidden until the game calls show() */
     visible?: number;
+    /** Id of the element this one sits in (''/absent — the screen): anchor, x, y count from
+     *  the parent's box; the parent clips it and hides it together with itself. */
+    parent?: string;
+    /** 'h' | 'v' | 'both' (sized kinds): fills the container on that axis — x (y) is the inset
+     *  from both edges, w (h) is ignored. */
+    stretch?: string;
 }
 
 /** LOCATION_OBJECTS record (Objects.js, written by the editor). */

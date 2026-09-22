@@ -2,7 +2,7 @@
     "kit": "ArcEngine",
     "gameVersion": "0.1.0",
     "apiVersion": {
-        "scene": 1,
+        "scene": 2,
         "manifest": 1
     },
     "engine": "PlayCanvas 2 (libs/playcanvas.min.js, WebGL2 only)",
@@ -39,13 +39,18 @@
                 "canon": "claude/skills/render-conventions/SKILL.md"
             },
             {
+                "name": "scatter",
+                "description": "Many static copies of one geometry — Scene.scatter (the semantic API) and Instances3D (the bake, js/Instances3D.js). Forests, rocks, fence posts, grass tufts, rubble, fields of crates. Read before pla",
+                "canon": "claude/skills/scatter/SKILL.md"
+            },
+            {
                 "name": "sound",
                 "description": "The game's sound — js/Sound3D.js (effects, music, sounds that stand on the map, channels and volumes), the sound field of a location object in Objects.js, the AUDIO_* constants, tools/make-sounds.mjs ",
                 "canon": "claude/skills/sound/SKILL.md"
             },
             {
                 "name": "ui",
-                "description": "The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records, the editor's UI tab (_utils/editor/ui-panel.js) with drag and resize over the view, UI_REF_HEIGHT scaling. Read before adding or ",
+                "description": "The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records with nesting (parent) and stretch, the editor's UI tab (_utils/editor/ui-panel.js) with drag and resize over the view, UI_REF_HEIG",
                 "canon": "claude/skills/ui/SKILL.md"
             },
             {

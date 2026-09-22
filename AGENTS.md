@@ -26,8 +26,9 @@ Strategy: `ROADMAP.md`.
 | `build` | Dev server, build and code checks — dev server (tools/dev-server.mjs), archive builder (tools/build.mjs, asset-scan.mjs, zip.mjs), tsc type check and node --tes |
 | `editor` | The kit's web editor (_utils/editor) — location view with free/game cameras, toon toggle, Global Settings tab (constants inspector from schema.js, saves to Cons |
 | `render-conventions` | Conventions and hard limits for anything you add to the scene yourself — custom geometry (winding in the mirrored world, culling), normal maps (OpenGL vs Direct |
+| `scatter` | Many static copies of one geometry — Scene.scatter (the semantic API) and Instances3D (the bake, js/Instances3D.js). Forests, rocks, fence posts, grass tufts, r |
 | `sound` | The game's sound — js/Sound3D.js (effects, music, sounds that stand on the map, channels and volumes), the sound field of a location object in Objects.js, the A |
-| `ui` | The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records, the editor's UI tab (_utils/editor/ui-panel.js) with drag and resize over the view, UI_RE |
+| `ui` | The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records with nesting (parent) and stretch, the editor's UI tab (_utils/editor/ui-panel.js) with dr |
 | `verify` | How to check a change with your own eyes and numbers — the Browser pane, Debug3D (held view, synchronous frames, benchmark, scene lint, debug render modes), mea |
 | `world3d` | The kit's 3D engine — World3D (engine, View3D, light, shadows, toon shader chunks, ink edges and silhouette outline, addObject), Terrain3D (ground), Location3D  |
 

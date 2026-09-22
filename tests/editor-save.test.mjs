@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import vm from 'node:vm';
-import { formatObjects, patchScalar, saveConstants, saveObjects } from '../_utils/editor/save.mjs';
+import { formatObjects, formatUI, patchScalar, saveConstants, saveObjects } from '../_utils/editor/save.mjs';
 import { collectRefs } from '../tools/asset-scan.mjs';
 import { ROOT } from './browser-scripts.mjs';
 
@@ -212,4 +212,20 @@ test('js/Objects.js набора записан редактором: форма
   const r = formatObjects(evalObjects(src));
   assert.equal(r.ok, true);
   assert.equal(r.src, src);
+});
+
+test('UILayout: parent и stretch пишутся, пустые — нет; цикл и чужой parent отклоняются', () => {
+  const el = (o) => Object.assign({ id: 'a', kind: 'panel', anchor: 'top-left', x: 5, y: 6, w: 100, h: 40, fill: '#10202c', border: '', radius: 4, alpha: 1, visible: 1 }, o);
+  const r = formatUI([el({ stretch: 'h', parent: 'b' }), el({ id: 'b', parent: '', stretch: '' })]);
+  assert.equal(r.ok, true);
+  assert.match(r.src, /id: 'a', kind: 'panel', anchor: 'top-left', parent: 'b', x: 5, y: 6, w: 100, h: 40, stretch: 'h'/);
+  assert.doesNotMatch(r.src, /id: 'b'[^\n]*parent/, 'пустой parent не пишется');
+  // The parent must exist and the chain must not come back.
+  assert.equal(formatUI([el({ parent: 'zzz' })]).code, 'bad_element');
+  assert.equal(formatUI([el({ parent: 'b' }), el({ id: 'b', parent: 'a' })]).code, 'bad_element');
+  assert.equal(formatUI([el({ stretch: 'diag' })]).code, 'bad_element');
+  // A text has no stretch field of its own, but parent nests it like any other kind.
+  const t = formatUI([{ id: 't', kind: 'text', parent: 'b', anchor: 'top-left', x: 1, y: 2, text: 'hi', fontSize: 12, color: '#ffffff', shadow: '', alpha: 1, visible: 1 }, el({ id: 'b' })]);
+  assert.equal(t.ok, true);
+  assert.match(t.src, /id: 't', kind: 'text', anchor: 'top-left', parent: 'b'/);
 });

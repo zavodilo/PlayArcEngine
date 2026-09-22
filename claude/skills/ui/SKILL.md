@@ -1,6 +1,6 @@
 ---
 name: ui
-description: The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records, the editor's UI tab (_utils/editor/ui-panel.js) with drag and resize over the view, UI_REF_HEIGHT scaling. Read before adding or changing ANY on-screen interface element (text, counter, bar, button, panel, menu), before editing UI.js, UILayout.js or ui-panel.js, and before adding a new element kind or field.
+description: The game's UI (HUD) — js/UI.js runtime, js/UILayout.js layout records with nesting (parent) and stretch, the editor's UI tab (_utils/editor/ui-panel.js) with drag and resize over the view, UI_REF_HEIGHT scaling. Read before adding or changing ANY on-screen interface element (text, counter, bar, button, panel, menu), before editing UI.js, UILayout.js or ui-panel.js, and before adding a new element kind or field.
 ---
 
 # Game UI: UI.js, UILayout.js, the editor's UI tab
@@ -42,10 +42,10 @@ for (let i = 0; i < 5; i++) UI.add(Object.assign({}, t, { id: 'slot' + i, x: t.x
 
 | Kind | Fields besides `x, y, alpha, visible` |
 |---|---|
-| `text` | `text, fontSize, color, shadow` — sizes itself by its content |
-| `panel` | `w, h, fill, border, radius` |
-| `bar` | `w, h, value, color` (the filled part), `fill, border, radius` |
-| `button` | `w, h, text, fontSize, color, fill, border, radius` — the only kind that catches the pointer |
+| `text` | `parent, text, fontSize, color, shadow` — sizes itself by its content |
+| `panel` | `parent, w, h, stretch, fill, border, radius` |
+| `bar` | `parent, w, h, stretch, value, color` (the filled part), `fill, border, radius` |
+| `button` | `parent, w, h, stretch, text, fontSize, color, fill, border, radius` — the only kind that catches the pointer |
 
 - `id` — `[A-Za-z_][A-Za-z0-9_-]*`, unique: game code finds the element by it.
 - `anchor` — one of 9 screen points (`top-left` … `bottom-right`): `x, y` go from that screen
@@ -54,6 +54,16 @@ for (let i = 0; i < 5; i++) UI.add(Object.assign({}, t, { id: 'slot' + i, x: t.x
   screen corner on any screen. Math without DOM: `UI.resolve(def, w, h, W, H)` and the inverse
   `UI.toStored(anchor, left, top, w, h, W, H)` (the editor changes the anchor through it — the
   element stays in place).
+- `parent` (optional) — the id of the element this one sits in (`''`/absent — the screen):
+  `anchor`, `x` and `y` then count from the PARENT's box, the parent clips the child
+  (`overflow: hidden`) and hiding the parent hides everything inside it. `UI.parentOf(def)`
+  walks the chain and gives `null` on a missing parent or a cycle — a bad record lands on the
+  screen instead of breaking the tree; `formatUI` refuses cycles outright. A full-screen dim
+  for a pause menu is a panel with `parent` of the HUD frame, or `stretch: 'both', x: 0, y: 0`
+  on the screen.
+- `stretch` (optional, sized kinds) — `'h' | 'v' | 'both'`: the element fills its container
+  (the parent's box or the screen) on that axis; `x` (`y`) becomes the inset from BOTH edges
+  and `w` (`h`) is ignored. A `text` never stretches (it sizes itself by its content).
 - Colors — `'#rrggbb'`, `''` — none. Records go in drawing order: later — on top.
 - Numbers are px of a screen `UI_REF_HEIGHT` tall (`Constants.js`, 720): the root is scaled by
   `canvas height / UI_REF_HEIGHT`, so the interface keeps its proportions from a phone to 4K.
@@ -85,7 +95,13 @@ its record like the rest — not DOM positioned by hand in game code.
 - The selection box lives INSIDE the scaled root, so its lines and handles are sized through
   the CSS variable `--ui-inv` (= 1 / scale). `UI.applyLayout` clears the root — `refresh()`
   puts the box back.
-- Geometry goes through `rect(def)` / `place(def, rect)` — layout px, whole numbers.
+- Geometry goes through `container(def)` → `rect(def)` / `place(def, rect)` — layout px, whole
+  numbers; a nested element is laid out inside its parent's box (screen px are the parent's
+  rect plus its border). The list is a TREE (children indented under the parent, drawing order
+  inside one container); deleting an element deletes what is nested in it (Ctrl+Z brings it all
+  back), renaming rewrites the `parent` references. The "Inside" and "Stretch" rows
+  (`setParent` / `setStretch`) keep the element where it stands: the geometry is recomputed for
+  the new container / the released axis keeps the size it had.
 - Property rows — `UIPanel.FIELDS` (`[key, type]`, type: `num | unit | text | color | flag`),
   shown when the key is in `UI.DEFAULTS[kind]`; labels — `ui.f.<key>` in `i18n.js`.
 - History — layout snapshots before/after (`snapshot` / `commit` / `restore`), like the
