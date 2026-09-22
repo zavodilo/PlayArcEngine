@@ -204,7 +204,13 @@ looking up.
 `home()` (key R) — orientation and zoom from constants, target — the `follow` object or the
 center, on the ground (`lift = 0`; `lookAt(x, y)` drops `lift` too, `follow` decays it).
 `applyConstants()` re-reads constants (FOV — immediately). Keys (`e.code`: WASD, arrows, Q,
-E, R — `FLY_KEYS`) are not intercepted inside input fields. Flight (`_fly`) moves the target
+E, R — `FLY_KEYS`) are not intercepted inside input fields. A game that steers its own object
+with those keys sets `camera.flightKeys = false`: the controller stops adding them to `_keys`
+(and stops calling `preventDefault`), while RMB orbit, the wheel and R stay with the camera —
+no need to mutate the static `FLY_KEYS` table. `camera.lookAt(x, y, h)` puts the look-at point
+`h` px above the ground (without `h` it drops to the ground as before): a game framing a tall
+prop calls it once at boot, and the lift survives because following an object is what decays it.
+Flight (`_fly`) moves the target
 by a world vector normalized to the step, keeps absolute height (`_setTarget3` turns it into
 `lift`) and holds the camera above the ground (`_floorEye` raises `lift`, the view direction
 stays). Pan keeps the ground point under the cursor by intersecting the plane at its height,
@@ -213,6 +219,16 @@ flight it is ahead of the target; the shadow range is fitted around it, the edit
 objects there.
 
 ## Pitfalls (each one already cost an iteration)
+
+- Which screen side a map axis lands on is NOT to be derived by hand from the mirror table:
+  measure it. `view.projectToScreen(mx + d, my, h)` versus `view.projectToScreen(mx - d, my, h)`
+  tells you where +x actually projects for the current azimuth (on PlayCanvas 2.22 with the
+  kit's default camera it is the LEFT side). Author asymmetric props — a sign, a chute, a
+  control deck — only after that check, and place them by the measured answer.
+- A bake that mirrors X (the kit convention for geometry authored in map space) mirrors authored
+  TEXT with it: a sign reads backwards on screen. Write sign strings with a pre-mirrored pen
+  (glyphs reversed in order and in columns) so the bake's mirror cancels it, or verify the sign
+  with a screenshot before shipping.
 
 - The engine is WebGL2-only in PlayCanvas 2: no WebGL1 fallback path exists anywhere in the
   kit (the old Poisson-shadow branch is gone).

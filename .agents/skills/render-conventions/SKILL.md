@@ -108,9 +108,41 @@ name says nothing.
   the position at placement — not its index: indices shift whenever a rule or a constant
   changes the scatter.
 
+## Vertex colors: one mesh, many colors (voxels, palettes, tints)
+
+A mesh with a color per vertex needs neither a material per color nor a texture:
+
+- `mesh.setColors(floatArray, 4)` (RGBA per vertex) plus `material.vertexColors = true`.
+- The albedo multiply is OPT-IN per channel group: `material.diffuseVertexColor = true`
+  (with `diffuseVertexColorChannel`, default `'rgb'`) defines `STD_DIFFUSE_VERTEX`, which does
+  `dAlbedo *= saturate(vVertexColor.rgb)`. `vertexColors` alone only binds the attribute —
+  without `diffuseVertexColor` the colors are silently ignored and the mesh renders white.
+- Keep `material.diffuse` white and write the vertex colors in the SAME space the kit writes
+  `material.diffuse` (hex/255, `World3D.hexColor3`): the toon chunks and the sRGB output then
+  treat them exactly like any other object's albedo. `useVertexColorGamma` stays off — the kit
+  does not gamma-decode its diffuse either. One shared material per render group then serves
+  every mesh of that group, so a whole voxel cabinet is one draw call.
+- Bake per-corner ambient occlusion straight into the vertex color (multiply the rgb). For a
+  box face corner read the two side neighbours and the diagonal one, all pushed out along the
+  face normal: `level = (side1 && side2) ? 0 : 3 - (side1 + side2 + corner)`, brightness
+  `[0.44, 0.63, 0.82, 1.0][level]`; split the quad along the OTHER diagonal when
+  `ao[0] + ao[2] > ao[1] + ao[3]`, or the gradient bends visibly across the seam.
+- Cull hidden faces before baking (a voxel face whose neighbour is solid is never seen): a
+  twenty-thousand-voxel model bakes down to a few thousand quads.
+
+Transparent panels (glass, holograms): PlayCanvas 2 has NO `pc.BLEND_ALPHA` — the constants are
+`BLEND_NONE`, `BLEND_NORMAL`, `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` and friends. For a
+see-through surface use `blendType = pc.BLEND_PREMULTIPLIED` (ONE, ONE_MINUS_SRC_ALPHA) with the
+vertex rgb ALREADY multiplied by the panel alpha and `material.opacity` set to that same alpha,
+plus `depthWrite = false`, `cull = pc.CULLFACE_NONE`, `useLighting = false`, and
+`castShadow = false` in the `World3D.addObject` opts. With `BLEND_NORMAL` and an unmultiplied
+color the panel renders effectively opaque and hides what it was meant to show.
+
 ## Checklist
 
 1. `await Debug3D.lint()` in the game and "Lint scene" in the editor: no errors.
+1b. Vertex-colored mesh: `diffuseVertexColor` set, colors in the kit's diffuse space, hidden
+    faces culled; a transparent one premultiplied and without depth write.
 2. "view: back faces": nothing red from the outside.
 3. New light: the sun is still the only shadow caster, shadows still fall at night and by day,
    the ground and the biggest props receive them.
