@@ -40,7 +40,7 @@
             },
             {
                 "name": "sound",
-                "description": "The game's sound — js/Sound3D.js (effects, music, sounds that stand on the map, channels and volumes), the sound field of a location object in Objects.js, the AUDIO_* constants, tools/make-sounds.mjs ",
+                "description": "The game's sound — js/engine/Sound3D.js (effects, music, sounds that stand on the map, channels and volumes), the sound field of a location object in Objects.js, the AUDIO_* constants, tools/make-soun",
                 "canon": "claude/skills/sound/SKILL.md"
             },
             {

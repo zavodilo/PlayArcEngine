@@ -24,7 +24,7 @@ JS + PlayCanvas 2 (`libs/playcanvas.min.js`, локально), ноль npm-з�
 |---|---|
 | `js/` (`World3D.js`, `Terrain3D.js`, `Location3D.js`, `CameraControl.js`, `Model3D.js`, `Gltf3D.js`, `Procedural3D.js`, `Objects.js`, `Game.js`, `main.js`), объекты в сцене, модели GLB и клипы анимации, свет/тени/toon/контур, константы `CAMERA_*`/`WORLD3D_*`/`TERRAIN_*`/`LOCATION_*` | `claude/skills/world3d/SKILL.md` |
 | ЛЮБОЙ элемент интерфейса игры (текст, счётчик, шкала, кнопка, панель, меню): `js/UI.js`, `js/UILayout.js`, вкладка UI редактора (`ui-panel.js`), новый вид элемента | `claude/skills/ui/SKILL.md` |
-| ЛЮБОЙ звук: эффект, музыка, звук объекта локации, `js/Sound3D.js`, поле `sound` в `Objects.js`, константы `AUDIO_*`, файлы в `assets/sounds` | `claude/skills/sound/SKILL.md` |
+| ЛЮБОЙ звук: эффект, музыка, звук объекта локации, `js/engine/Sound3D.js`, поле `sound` в `Objects.js`, константы `AUDIO_*`, файлы в `assets/sounds` | `claude/skills/sound/SKILL.md` |
 | `_utils/`, редактор, инспектор, вкладка Objects, новая константа в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
 | `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
 | своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер, thin instances и процедурная расстановка; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
@@ -164,7 +164,7 @@ NOTICE            атрибуция MIT-компонентов (PlayCanvas, @pl
 README.md         публичное описание набора (EN): быстрый старт, AI-native раздел, лицензии
 ROADMAP.md        стратегия публичного AI-native набора: фазы A/B/C, лицензии, риски
 tools/            … sync-skills.mjs — генерация копий скиллов для агентов (--check для check.mjs);
-                  manifest.mjs — генерация js/SceneSchema.js; create-arcengine.mjs — скаффолд
+                  manifest.mjs — генерация js/core/SceneSchema.js; create-arcengine.mjs — скаффолд
                   новой игры на наборе (стартеры kit/empty/survival, --no-skills)
 scaffold/         исходники стартеров для create-arcengine (оверлеи js/); в архив игры не едет
 ```
@@ -175,8 +175,8 @@ scaffold/         исходники стартеров для create-arcengine 
 совместимые — `.agents/skills/` + `AGENTS.md`, Cursor — ещё `.cursor/rules/arcengine.mdc`.
 Канон один (`claude/skills/`, `claude/vendor/`); копии и точки входа перегенерируются
 `node tools/sync-skills.mjs` после любой правки канона (иначе `check.mjs` упадёт).
-Семантический слой фазы B: `Scene.*` (js/SceneAPI.js) над каноном записей; манифест
-`js/SceneSchema.js` перегенерируется `node tools/manifest.mjs` после правок Constants.js или
+Семантический слой фазы B: `Scene.*` (js/core/SceneAPI.js) над каноном записей; манифест
+`js/core/SceneSchema.js` перегенерируется `node tools/manifest.mjs` после правок Constants.js или
 схемы редактора (check.mjs сверяет). Составные правки агента — транзакции
 `Edit.begin(label).add/update/remove…commit()`: валидация всех операций до применения,
 при ошибке — откат к снимку и запись в `Scene.journal()` (committed/rolledback/rejected/

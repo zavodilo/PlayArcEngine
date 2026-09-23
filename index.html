@@ -66,22 +66,24 @@
         <div class="loading-text"></div>
     </div>
 
-    <!-- Order matters: Constants.js first (the others read its globals), main.js last -->
+    <!-- Order matters: Constants.js first (the others read its globals), main.js last.
+         Layers: js/engine (the only place that knows pc.*) -> js/core (the semantic model)
+         -> js/presentation -> js/profiles. Gameplay (js/Game.js) uses the semantic layer only. -->
     <script src="js/Constants.js"></script>
     <script src="js/Objects.js"></script>
     <script src="js/UILayout.js"></script>
-    <script src="js/Sound3D.js"></script>
-    <script src="js/World3D.js"></script>
-    <script src="js/Terrain3D.js"></script>
-    <script src="js/CameraControl.js"></script>
-    <script src="js/Model3D.js"></script>
-    <script src="js/Gltf3D.js"></script>
-    <script src="js/Location3D.js"></script>
-    <script src="js/SceneSchema.js"></script>
-    <script src="js/Debug3D.js"></script>
-    <script src="js/Procedural3D.js"></script>
+    <script src="js/engine/Sound3D.js"></script>
+    <script src="js/engine/World3D.js"></script>
+    <script src="js/engine/Terrain3D.js"></script>
+    <script src="js/engine/CameraControl.js"></script>
+    <script src="js/engine/Model3D.js"></script>
+    <script src="js/engine/Gltf3D.js"></script>
+    <script src="js/engine/Location3D.js"></script>
+    <script src="js/engine/Procedural3D.js"></script>
+    <script src="js/engine/Debug3D.js"></script>
+    <script src="js/core/SceneSchema.js"></script>
     <script src="js/UI.js"></script>
-    <script src="js/SceneAPI.js"></script>
+    <script src="js/core/SceneAPI.js"></script>
     <script src="js/Game.js"></script>
     <script src="js/main.js"></script>
     <script>

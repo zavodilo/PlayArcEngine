@@ -17,7 +17,7 @@
   * Движок перенесён с Babylon.js 9.26 на PlayCanvas 2.22 (`libs/playcanvas.min.js`, UMD, WebGL2): toon-чанки `StandardMaterial` (цветные тени, полосы, rim), чернильные рёбра, inverted-hull контур, слои WORLD/OVERLAY/ACTOR, тени directional light.
   * Координатное соглашение: мир движка — зеркало карты по X (левосторонний PlayCanvas против правосторонней карты); игровая математика осталась в координатах карты (скилл `world3d`).
   * Фаза A (база, PR #3): sync-skills и точки входа агентов (`.claude/skills/`, `.agents/skills/`, `.cursor/rules/`, `AGENTS.md`), вендор `@playcanvas/skills` **v0.3.0**, NOTICE/README.
-  * Фаза B (база, PR #4): `Scene.spawn/move/remove/query/inspect/follow/manifest` + `js/SceneSchema.js` (GENERATED), контрактные тесты, headless-сессия агента.
+  * Фаза B (база, PR #4): `Scene.spawn/move/remove/query/inspect/follow/manifest` + `js/core/SceneSchema.js` (GENERATED), контрактные тесты, headless-сессия агента.
   * Фаза C (база, PR #5): `create-arcengine` (стартеры kit/empty/survival, npm bin, zero deps).
   * Ниже — ДЕЛЬТА к базе: фаза A+ (`agent-manifest.json`), фаза B+ (транзакции `Edit.*`, `Kit.*`/`UI.*`/`Asset.*`, `Scene.seed`, профили check `--render/--visual/--all`, visual gate).
 
@@ -86,7 +86,7 @@ PR #6–#8. Статусы пунктов ревью:
 |---|---|
 | 2, 3, 4, 6 (semantic API, transactions, inspect, seed) | в main/PR #4, #7: `Scene.*`, `Edit.*`, `Scene.journal()`, `Scene.seed/random` |
 | 4 расширенный (фильтры inspect: kind/name/area, entities/camera/warnings) | PR #9 |
-| 5 (schema contract) | в main: `js/SceneSchema.js` + валидация до кадра (PR #4, #7) |
+| 5 (schema contract) | в main: `js/core/SceneSchema.js` + валидация до кадра (PR #4, #7) |
 | 7 (headless gate + машинный отчёт) | PR #7 (gate), PR #9 (`--json=FILE` + скриншоты в отчёте) |
 | 8 (visual assertions: assertVisible/assertInFrame/assertPosition/capture) | PR #9 (`Debug3D.assert*`, `capture()`) |
 | 17 (agent-manifest.json) | PR #6 |

@@ -6,7 +6,7 @@
 //      Constants.js (otherwise "Save" has nowhere to go);
 //   2. its own port (8090+), to live next to the game on 8080.
 //  Static files are served from the PROJECT ROOT (the editor loads the game's
-//  /js/Constants.js, /js/World3D.js, /assets/* directly), with no-store — as in dev-server.
+//  /js/Constants.js, /js/engine/World3D.js, /assets/* directly), with no-store — as in dev-server.
 //
 //  Writing game files — save.mjs (Constants.js patch, the whole Objects.js and UILayout.js,
 //  backups). POST /api/save-ui — UILayout.js from a validated element list (UI tab).

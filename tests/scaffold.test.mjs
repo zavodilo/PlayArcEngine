@@ -22,7 +22,7 @@ test('скаффолд: survival-стартер копирует набор, о�
     const dir = tmp();
     const r = cli([dir, '--starter', 'survival']);
     assert.equal(r.status, 0, r.stderr);
-    for (const f of ['index.html', 'js/World3D.js', 'js/SceneAPI.js', 'js/SceneSchema.js',
+    for (const f of ['index.html', 'js/engine/World3D.js', 'js/core/SceneAPI.js', 'js/core/SceneSchema.js',
         'libs/playcanvas.min.js', 'assets/models/character.glb', '_utils/editor/server.mjs',
         'tools/check.mjs', 'claude/skills/world3d/SKILL.md', 'claude/vendor/playcanvas/LICENSE',
         'AGENTS.md', '.agents/skills/world3d/SKILL.md', '.claude/skills/world3d/SKILL.md',

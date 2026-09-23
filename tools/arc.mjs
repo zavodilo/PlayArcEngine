@@ -9,7 +9,7 @@
 //    build    [--version=X|--no-zip|--force|--keep-unused|--quiet]
 //    gate     [--render|--visual|--all]     headless render/visual gate (puppeteer, dev-only)
 //    sync     [--check]              regenerate / verify the agent skill copies
-//    manifest [--check]              regenerate / verify js/SceneSchema.js
+//    manifest [--check]              regenerate / verify js/core/SceneSchema.js
 //    scaffold <dir> [--starter kit|empty|survival] [--no-skills] [--overwrite]
 //
 //  The .bat / .sh files at the repo root are THIN wrappers over this CLI; the servers
@@ -29,7 +29,7 @@ const COMMANDS = {
     build:    { script: 'tools/build.mjs',             hint: 'playable zip archive of the game' },
     gate:     { script: 'tools/headless-gate.mjs',     hint: 'headless render/visual gate (needs puppeteer in the verify environment)' },
     sync:     { script: 'tools/sync-skills.mjs',       hint: 'regenerate .claude/skills, .agents/skills, .cursor/rules, AGENTS.md, agent-manifest.json' },
-    manifest: { script: 'tools/manifest.mjs',          hint: 'regenerate js/SceneSchema.js from Constants.js + the editor schema' },
+    manifest: { script: 'tools/manifest.mjs',          hint: 'regenerate js/core/SceneSchema.js from Constants.js + the editor schema' },
     scaffold: { script: 'tools/create-arcengine.mjs',  hint: 'scaffold a new game on the kit (starters kit/empty/survival)' }
 };
 

@@ -2,7 +2,7 @@
 //
 // Agents (and game code that prefers declarations over engine calls) drive the scene
 // through this namespace instead of pc.* / World3D.*: every method takes and returns
-// plain JSON-able data, validates it against SCENE_SCHEMA (js/SceneSchema.js, generated
+// plain JSON-able data, validates it against SCENE_SCHEMA (js/core/SceneSchema.js, generated
 // by tools/manifest.mjs) and fails with a readable Error instead of a broken frame.
 //
 //   Scene.spawn('assets/models/mill.fbx', { kind: 'prop', x: 800, y: 900, heading: 30 })
