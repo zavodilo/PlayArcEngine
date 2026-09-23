@@ -46,6 +46,30 @@ port, print the URL and open the browser themselves (win32 `start`, darwin `open
 linux `xdg-open`).
 Requires Node.js (any modern LTS); the game itself needs none of it.
 
+## One game, five looks (the unified visual pipeline)
+
+A game is authored ONCE as a semantic model (`js/GameSpec.js`: rules, systems, world, entities,
+scenes, an asset registry of ROLES, UI, audio, progression, the save schema). On top of it:
+
+* a **render profile** — a type of presentation: `2d`, `2.5d`, `isometric3d`, `lowpoly3d`,
+  `full3d` (canon: `manifest/render-profiles.json`);
+* a **variant** — one concrete presentation of this project (profile + overrides), a JSON file
+  in `presentation/variants/`. Profile != Variant; five variants share one game model.
+
+```
+node tools/arc.mjs run --all        # five browser tabs, ONE source tree, five presentations
+node tools/arc.mjs run --variant arcengine-sample-2d
+node tools/arc.mjs variant convert --source arcengine-sample-2d --profile full3d
+node tools/arc.mjs check --profiles # the headless profile/migration matrix
+```
+
+Converting 2D → 3D is a *presentation migration*: entity ids, logical coordinates, rules, the
+world and the save schema are byte-identical afterwards (`gameplayHash` proves it), missing art
+degrades through fallbacks to generated placeholders, and the source variant always survives.
+The editor's **Profile** tab previews any variant live and previews/applies migrations.
+Gameplay code never sees a renderer: `GameModel`, `Entity`, `World`, `Input`, `GameAnimation`,
+`GameAudio`, `Save`, `RenderProfile`, `Variant`, `Camera`, `Lighting` — never `pc.*`.
+
 ## Making a game
 
 1. Logic lives in `js/Game.js` (`constructor(app)`, `update(dt)`); bigger games add files

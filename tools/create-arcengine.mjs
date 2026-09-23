@@ -85,7 +85,9 @@ fs.writeFileSync(path.join(target, 'STARTER.md'),
             ? 'Blank scene: no objects, no logic. Spawn from code or an agent:\n`Scene.spawn(\'assets/models/mill.fbx\', { kind: \'prop\', x: 900, y: 900 })`.\n'
             : 'Survival skeleton: waves of wanderers chase the hero (Scene API), stamina HUD by data.\n') +
     '\nRun: `node tools/dev-server.mjs` (game), `node _utils/editor/server.mjs` (editor),\n' +
-    '`node tools/check.mjs` (types + tests + skills sync). Agents start from AGENTS.md / CLAUDE.md.\n');
+    '`node tools/check.mjs` (types + tests + skills sync). Agents start from AGENTS.md / CLAUDE.md.\n' +
+    '\nThe game model lives in js/GameSpec.js; `node tools/arc.mjs variants` refreshes project.json\n' +
+    'and the variant files for this project, `node tools/arc.mjs run --all` presents every profile.\n');
 
 console.log('create-arcengine: ' + files + ' files -> ' + path.relative(process.cwd(), target) +
     ' (starter: ' + starter + (NO_SKILLS ? ', no skills' : '') + ')');

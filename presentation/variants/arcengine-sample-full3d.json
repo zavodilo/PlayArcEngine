@@ -1,0 +1,26 @@
+{
+    "id": "arcengine-sample-full3d",
+    "name": "ArcEngine Sample — Cinematic 3D",
+    "profile": "full3d",
+    "enabled": true,
+    "description": "The full stack: perspective third-person camera over the shoulder, smooth PBR shading, soft shadows, fog, spatial audio, skeletal animation.",
+    "createdBy": "author",
+    "createdFrom": "arcengine-sample-isometric3d",
+    "camera": {
+        "mode": "thirdPerson",
+        "follow": "character",
+        "azimuthDeg": -90,
+        "elevationDeg": 15,
+        "fovDeg": 52,
+        "distance": 420,
+        "orbit": true
+    },
+    "lighting": { "preset": "realistic", "shadows": 1, "toon": 0, "ink": 0, "outline": 0, "fog": 0.00032 },
+    "materials": { "shading": "pbr" },
+    "environment": { "ground": "terrain", "flatten": 0, "tilePx": 64 },
+    "animation": { "style": "skeletal" },
+    "ui": { "space": "screen", "worldSpace": true },
+    "audio": { "spatial": true },
+    "effects": { "postprocessing": "cinematic", "particles": 1000 },
+    "visualMappings": "presentation/mappings/arcengine-sample-full3d.json"
+}

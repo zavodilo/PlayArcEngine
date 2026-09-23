@@ -1,0 +1,51 @@
+{
+    "player.visual": {
+        "2d": {
+            "type": "sprite",
+            "asset": "assets/visual/2d/player.png",
+            "generated": true
+        }
+    },
+    "world.door.visual": {
+        "2d": {
+            "type": "sprite",
+            "asset": "assets/visual/2d/tile-door.png",
+            "generated": true
+        }
+    },
+    "world.loot.visual": {
+        "2d": {
+            "type": "sprite",
+            "asset": "assets/visual/2d/tile-loot.png",
+            "generated": true
+        }
+    },
+    "world.mill.visual": {
+        "2d": {
+            "type": "sprite",
+            "asset": "assets/visual/2d/mill.png",
+            "generated": true
+        }
+    },
+    "world.obstacle.visual": {
+        "2d": {
+            "type": "sprite",
+            "asset": "assets/visual/2d/tile-rock.png",
+            "generated": true
+        }
+    },
+    "world.wall.visual": {
+        "2d": {
+            "type": "tile",
+            "asset": "assets/visual/2d/tile-wall.png",
+            "generated": true
+        }
+    },
+    "world.water.visual": {
+        "2d": {
+            "type": "tile",
+            "asset": "assets/visual/2d/tile-water.png",
+            "generated": true
+        }
+    }
+}

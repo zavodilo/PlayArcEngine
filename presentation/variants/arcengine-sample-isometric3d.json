@@ -1,0 +1,24 @@
+{
+    "id": "arcengine-sample-isometric3d",
+    "name": "ArcEngine Sample — Isometric 3D",
+    "profile": "isometric3d",
+    "enabled": true,
+    "description": "Diablo-like presentation: a fixed orthographic camera over real 3D geometry, models instead of sprites, stylized 3D lighting with crisp shadows.",
+    "createdBy": "author",
+    "createdFrom": "arcengine-sample-2.5d",
+    "camera": {
+        "mode": "isometric",
+        "follow": "character",
+        "azimuthDeg": -90,
+        "elevationDeg": 55,
+        "orthoHeightPx": 480,
+        "orbit": false
+    },
+    "lighting": { "preset": "isometric", "shadows": 1, "toon": 1, "ink": 2, "outline": 2 },
+    "materials": { "shading": "toon" },
+    "environment": { "ground": "3d-tiles", "flatten": 0, "tilePx": 64 },
+    "animation": { "style": "skeletal" },
+    "ui": { "space": "screen" },
+    "audio": { "spatial": true },
+    "visualMappings": "presentation/mappings/arcengine-sample-isometric3d.json"
+}

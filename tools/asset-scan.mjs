@@ -22,7 +22,21 @@ export const EXTRA_REFS = [];
 // index.html = a new line here, otherwise the file will not get into the archive.
 export const CODE_FILES = [
   'index.html',
-  'js/Constants.js', 'js/Objects.js', 'js/UILayout.js', 'js/Sound3D.js', 'js/World3D.js', 'js/Terrain3D.js', 'js/CameraControl.js', 'js/Model3D.js', 'js/Gltf3D.js', 'js/Location3D.js', 'js/SceneSchema.js', 'js/SceneAPI.js', 'js/Procedural3D.js', 'js/Debug3D.js', 'js/UI.js', 'js/Game.js', 'js/main.js',
+  // keep in sync with the <script> order in index.html
+  'js/Constants.js', 'js/GameSpec.js', 'js/Objects.js', 'js/UILayout.js',
+  'js/engine/Sound3D.js', 'js/engine/World3D.js', 'js/engine/Terrain3D.js', 'js/engine/CameraControl.js',
+  'js/engine/Model3D.js', 'js/engine/Gltf3D.js', 'js/engine/Location3D.js', 'js/engine/Procedural3D.js',
+  'js/engine/Debug3D.js', 'js/engine/Sprite2D.js', 'js/engine/Camera3D.js', 'js/engine/Lighting3D.js',
+  'js/engine/Visual3D.js',
+  'js/core/SceneSchema.js', 'js/presentation/RenderProfiles.js', 'js/presentation/Variants.js',
+  'js/core/Coords.js', 'js/core/Entity.js', 'js/core/World.js', 'js/core/GameModel.js',
+  'js/core/Input.js', 'js/core/GameAudio.js', 'js/core/Save.js',
+  'js/presentation/AssetRegistry.js', 'js/presentation/Variant.js', 'js/presentation/RenderProfile.js',
+  'js/presentation/Camera.js', 'js/presentation/Lighting.js', 'js/presentation/Animation.js',
+  'js/presentation/VisualEntity.js', 'js/presentation/Migration.js', 'js/presentation/Runtime.js',
+  'js/profiles/2d/profile.js', 'js/profiles/2.5d/profile.js', 'js/profiles/isometric3d/profile.js',
+  'js/profiles/lowpoly3d/profile.js', 'js/profiles/full3d/profile.js',
+  'js/UI.js', 'js/core/SceneAPI.js', 'js/Game.js', 'js/main.js',
   'libs/simplex-noise.js', 'libs/playcanvas.min.js',
 ];
 
