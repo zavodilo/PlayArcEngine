@@ -1,7 +1,8 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and tests (node --test)
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            fast: types, tests, skills sync, scene manifest
+//  node tools/check.mjs            fast: types, tests, skills sync, scene manifest,
+//                                  render-profile manifest + project variants drift
 //  node tools/check.mjs --all      RELEASE GATE: + headless render + visual smoke (puppeteer)
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --tests    tests only
@@ -38,7 +39,7 @@ const STEPS = [
 const ALL = process.argv.includes('--all');
 
 const DEFAULT_STEPS = ['--types', '--tests', '--skills'];
-const KNOWN = ['--types', '--tests', '--skills', '--render', '--visual'];
+const KNOWN = ['--types', '--tests', '--skills', '--profiles', '--render', '--visual', '--variants'];
 const only = ALL ? KNOWN : (process.argv.some(f => KNOWN.includes(f)) ? KNOWN.filter(f => process.argv.includes(f)) : DEFAULT_STEPS);
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);

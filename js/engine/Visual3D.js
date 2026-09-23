@@ -458,12 +458,16 @@ const Visual3D = {
         const b = obj.binding;
         if (!b) return false;
         if (obj.kind === 'sprite' && obj.handle && !obj.handle.disposed) {
+            // A sprite's authored size (the registry entry) is its final size: the entity's
+            // scale belongs to models (cm -> px of a file). With no authored size the default
+            // sprite size is a guess, and then the entity scale does refine it.
+            const authored = !!(b.size && b.size.length);
             Sprite2D.place(obj.handle, b.position, {
                 ground: RenderProfile.dimension(b.profile) >= 3 ? Visual3D._groundAt(b.position) : 0,
                 anchor: 'bottom',
                 heading: b.rotation ? b.rotation.y : 0,
-                scaleX: b.scale ? b.scale.x : 1,
-                scaleY: b.scale ? b.scale.y : 1,
+                scaleX: authored ? 1 : (b.scale ? b.scale.x : 1),
+                scaleY: authored ? 1 : (b.scale ? b.scale.y : 1),
                 bias: (b.zIndex || 0) * 0.01
             });
             return true;

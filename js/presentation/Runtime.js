@@ -51,7 +51,7 @@ const PlayArcRuntime = {
 
         // 4. which variant does THIS instance present?
         const q = PlayArcRuntime.fromQuery(o.query !== undefined ? o.query : PlayArcRuntime.query());
-        const wanted = o.variant || q.variant || (o.profile ? null : null) || PlayArcRuntime.defaultVariant(q.project);
+        const wanted = o.variant || q.variant || o.profile || PlayArcRuntime.defaultVariant(q.project);
         const variantId = PlayArcRuntime._resolveVariant(wanted, o.profile || q.profile);
         const project = (Variant.project && Variant.project.id) || spec.id;
         if (q.project && q.project !== project) {

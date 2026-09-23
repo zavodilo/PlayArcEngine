@@ -106,6 +106,9 @@ const Sprite2D = {
         /** @type {any} */
         const handle = {
             kind: 'sprite', entity: entity, mi: mi, mat: mat, view: view, layer: rec.layer,
+            // base size (as authored); the entity scale is applied on top of it every place()
+            // call, so place() must never accumulate it (that shrank/grew sprites per frame)
+            baseW: w, baseH: h,
             w: w, h: h, flat: !!o.flat, depthTest: mat.depthTest,
             texture: null, textureKey: null, state: null, frames: o.frames || null,
             frame: 0, frameT: 0, fps: (o.frames && o.frames.fps) || 8,
@@ -265,8 +268,8 @@ const Sprite2D = {
         const o = opts || {};
         const p = pos || { x: 0, y: 0, z: 0 };
         const ground = Number(o.ground) || 0;
-        const w = handle.w * (o.scaleX != null ? o.scaleX : 1);
-        const h = handle.h * (o.scaleY != null ? o.scaleY : 1);
+        const w = (handle.baseW || handle.w) * (o.scaleX != null ? o.scaleX : 1);
+        const h = (handle.baseH || handle.h) * (o.scaleY != null ? o.scaleY : 1);
         if (w !== handle.w || h !== handle.h) { handle.entity.setLocalScale(w, h, 1); handle.w = w; handle.h = h; }
         const lift = o.anchor === 'center' ? 0 : h / 2;
         // map -> mirrored engine world: (-x, height, z)
@@ -292,8 +295,10 @@ const Sprite2D = {
 
     setSize(handle, w, h) {
         if (!handle || handle.disposed) return null;
-        handle.w = Math.max(1, Number(w) || handle.w);
-        handle.h = Math.max(1, Number(h) || handle.h);
+        handle.baseW = Math.max(1, Number(w) || handle.baseW || handle.w);
+        handle.baseH = Math.max(1, Number(h) || handle.baseH || handle.h);
+        handle.w = handle.baseW;
+        handle.h = handle.baseH;
         handle.entity.setLocalScale(handle.w, handle.h, 1);
         return { w: handle.w, h: handle.h };
     },

@@ -39,7 +39,7 @@ export const PIPELINE = [
     'js/presentation/RenderProfile.js',
     'js/presentation/Camera.js',
     'js/presentation/Lighting.js',
-    'js/presentation/GameAnimation.js',
+    'js/presentation/Animation.js',
     'js/presentation/VisualEntity.js',
     'js/presentation/Migration.js',
     'js/profiles/2d/profile.js',

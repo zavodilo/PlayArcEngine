@@ -197,18 +197,24 @@ const AssetRegistry = {
         // the active variant's visual mapping wins over the shared registry
         const ov = AssetRegistry.overlayVariant(rec.role, pid);
         if (ov && AssetRegistry.exists(ov.asset)) {
-            const type = ov.type || (rec.variants[pid] && rec.variants[pid].type) || AssetRegistry.defaultTypeFor(rec.entityType || o.entityType || 'prop', pid);
+            // A variant's mapping overrides the shared registry's FILE choice; everything the
+            // shared variant still knows (size, frames, clips) carries over underneath it.
+            const declared = rec.variants[pid] || {};
+            const type = ov.type || declared.type || AssetRegistry.defaultTypeFor(rec.entityType || o.entityType || 'prop', pid);
+            const size = ov.size || declared.size;
+            const clips = ov.clips || declared.clips;
+            const frames = ov.frames || declared.frames;
             return Object.assign({}, base, {
                 type: AssetRegistry.coerce(type, pid),
                 asset: ov.asset || null,
                 resolvedBy: 'variant',
                 overlay: AssetRegistry._overlayName,
                 missing: false,
-                clips: ov.clips ? JSON.parse(JSON.stringify(ov.clips)) : null,
-                frames: ov.frames ? JSON.parse(JSON.stringify(ov.frames)) : null,
-                size: ov.size ? ov.size.slice() : null,
-                generated: !!ov.generated,
-                kind: ov.kind || null
+                clips: clips ? JSON.parse(JSON.stringify(clips)) : null,
+                frames: frames ? JSON.parse(JSON.stringify(frames)) : null,
+                size: size ? size.slice() : null,
+                generated: !!(ov.generated || declared.generated),
+                kind: ov.kind || declared.kind || null
             });
         }
         for (const p of chain) {
