@@ -248,8 +248,10 @@ const RenderProfile = {
             }
         };
 
-        // 1. camera (semantic: modes and parameters, never pc.Camera)
+        // 1. camera (semantic: modes and parameters, never pc.Camera). The editor previews
+        //    a variant without stealing its own camera: { skipCamera: true }.
         report.camera = step('camera', () => {
+            if (o.skipCamera) return { deferred: true, reason: 'skipCamera' };
             if (typeof Camera === 'undefined') return null;
             Camera.applyConfig(cfg.camera, { backend: RenderProfile._backend });
             return Camera.params();

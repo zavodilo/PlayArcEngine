@@ -130,7 +130,10 @@ const Sprite2D = {
         const cached = Sprite2D._textures.get(key);
         if (cached) { Sprite2D._assign(handle, cached, key); return cached; }
         const view = handle.view;
-        const asset = new pc.Asset(String(path).replace(/^.*\//, ''), 'texture', { url: String(path) });
+        // The editor serves the game from /_utils/editor/, so a bare assets/… path is
+        // resolved against the page: the location's assetBase prefixes it there.
+        const url = /^(\/|https?:|data:)/.test(String(path)) ? String(path) : (Sprite2D.assetBase || '') + String(path);
+        const asset = new pc.Asset(String(path).replace(/^.*\//, ''), 'texture', { url: url });
         asset.once('load', (a) => {
             if (handle.disposed) return;
             const tex = a.resource;
@@ -157,6 +160,8 @@ const Sprite2D = {
 
     /** Nearest sampling for pixel-art profiles (set by the profile adapter). */
     pixelArt: false,
+    /** '' in the game (paths from index.html), '/' in the editor (from the server root). */
+    assetBase: '',
 
     /** A generated placeholder texture (a colored card with a label) — no file needed. */
     setPlaceholder(handle, ph) {

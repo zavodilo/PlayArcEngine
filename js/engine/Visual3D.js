@@ -40,6 +40,7 @@ const Visual3D = {
         const c = ctx || {};
         if (!c.view || !c.location) throw new Error('Visual3D.attach: { view, location } are required');
         Visual3D._ctx = { view: c.view, location: c.location, camera: c.camera || null, canvas: c.canvas || null };
+        if (typeof Sprite2D !== 'undefined') Sprite2D.assetBase = (c.location && c.location.opts && c.location.opts.assetBase) || '';
         const backend = Visual3D.backend();
         if (typeof RenderProfile !== 'undefined') RenderProfile.attachBackend(backend);
         if (typeof Input !== 'undefined') Input.setWorldProjector((px, py) => Visual3D.screenToWorld(px, py));
