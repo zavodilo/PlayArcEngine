@@ -106,7 +106,7 @@ const Mesh3D = {
 
 /** @satisfies {Record<string, any>} */
 const Procedural3D = {
-    KINDS: ['box', 'crate', 'tree', 'rock', 'pole'],
+    KINDS: ['box', 'crate', 'tree', 'rock', 'pole', 'capsule'],
 
     // A deterministic shape per kind+seed: the same numbers on every run and in headless.
     geometry(kind, seed) {
@@ -128,6 +128,18 @@ const Procedural3D = {
         }
         if (kind === 'rock') {
             return { positions: Procedural3D._rock(40, rnd), color: [0.5, 0.5, 0.52] };
+        }
+        if (kind === 'capsule') {
+            // The stand-in for a missing character model: a body prism with two cone domes,
+            // ~174 px tall (a human-sized placeholder that reads well under the toon bands).
+            const body = Procedural3D._cylinder(30, 110, 10, 0, 32, 0);
+            const top = Procedural3D._cone(30, 34, 10, 0, 142, 0, rnd);
+            const bottom = Procedural3D._coneDown(30, 32, 10, 0, 32, 0, rnd);
+            return Procedural3D._merge([
+                { positions: body, color: [0.72, 0.3, 0.34] },
+                { positions: top, color: [0.78, 0.34, 0.38] },
+                { positions: bottom, color: [0.66, 0.27, 0.31] }
+            ]);
         }
         // pole
         const post = Procedural3D._box(8, 120, 8, 0, 60, 0);
@@ -205,6 +217,45 @@ const Procedural3D = {
             out.push(...a, ...b, ...apex);
         }
         for (let i = 1; i < seg - 1; i++) out.push(...ring[0], ...ring[i + 1], ...ring[i]);
+        return out;
+    },
+
+    // An n-sided prism of radius r and height h, base at (cx, cy, cz): side quads + two fans.
+    _cylinder(r, h, seg, cx, cy, cz) {
+        const out = [];
+        const ring = (y) => {
+            const pts = [];
+            for (let i = 0; i < seg; i++) {
+                const a = (i / seg) * Math.PI * 2;
+                pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+            }
+            return pts;
+        };
+        const lo = ring(cy), hi = ring(cy + h);
+        for (let i = 0; i < seg; i++) {
+            const j = (i + 1) % seg;
+            out.push(...lo[i], ...lo[j], ...hi[j], ...lo[i], ...hi[j], ...hi[i]);
+        }
+        for (let i = 1; i < seg - 1; i++) out.push(...lo[0], ...lo[i + 1], ...lo[i]);
+        for (let i = 1; i < seg - 1; i++) out.push(...hi[0], ...hi[i], ...hi[i + 1]);
+        return out;
+    },
+
+    // A cone pointing DOWN (the lower dome of a capsule): apex at (cx, cy - h), rim at cy.
+    _coneDown(r, h, seg, cx, cy, cz, rnd) {
+        const out = [];
+        const apex = [cx, cy - h, cz];
+        const ring = [];
+        for (let i = 0; i < seg; i++) {
+            const a = (i / seg) * Math.PI * 2;
+            const rr = r * (1 + (rnd ? rnd() * 0.05 : 0));
+            ring.push([cx + Math.cos(a) * rr, cy, cz + Math.sin(a) * rr]);
+        }
+        for (let i = 0; i < seg; i++) {
+            const a = ring[i], b = ring[(i + 1) % seg];
+            out.push(...a, ...apex, ...b);
+        }
+        for (let i = 1; i < seg - 1; i++) out.push(...ring[0], ...ring[i], ...ring[i + 1]);
         return out;
     },
 

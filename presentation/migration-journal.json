@@ -1,0 +1,84 @@
+[
+    {
+        "id": "mig-1",
+        "from": "lowpoly3d",
+        "to": "2d",
+        "source": "arcengine-sample-lowpoly3d",
+        "target": "arcengine-sample-2d",
+        "profile": "2d",
+        "timestamp": "2026-09-23T06:38:37.108Z",
+        "status": "committed",
+        "changes": [
+            "camera",
+            "rendering",
+            "visual_assets",
+            "lighting",
+            "materials",
+            "animation_representation",
+            "world_presentation",
+            "depth_model",
+            "visual_effects"
+        ],
+        "preserved": [
+            "gameplay",
+            "entity_ids",
+            "scene_ids",
+            "world_logic",
+            "logical_coordinates",
+            "rules",
+            "systems",
+            "quests",
+            "inventory",
+            "combat",
+            "economy",
+            "progression",
+            "ui_logic",
+            "save_schema",
+            "audio_cues",
+            "input_actions"
+        ],
+        "assetsGenerated": [
+            "assets/visual/2d/player.png",
+            "assets/visual/2d/mill.png"
+        ],
+        "fallbacksUsed": [
+            "player.visual",
+            "world.mill.visual"
+        ],
+        "counts": {
+            "entities": 2,
+            "preserved": 2,
+            "visualReplacements": 2,
+            "missingAssets": 2,
+            "fallbackGeometry": 0,
+            "cameraChanges": 1,
+            "lightingChanges": 1,
+            "worldChanges": 1,
+            "uiChanges": 0,
+            "gameplayFilesChanged": 0
+        },
+        "preservedProof": {
+            "ok": true,
+            "failed": [],
+            "gameplayHash": "47a8f91e",
+            "saveSchemaHash": "9680ab49",
+            "entityIds": 2,
+            "entityIdsPreserved": true,
+            "sceneIds": [
+                "gameplay",
+                "main-menu",
+                "map",
+                "inventory"
+            ],
+            "sceneIdsPreserved": true,
+            "coordinatesPreserved": true,
+            "rulesPreserved": true,
+            "saveSchemaPreserved": true,
+            "gameplayPreserved": true
+        },
+        "error": null,
+        "rollbackAvailable": true,
+        "ms": 27.22,
+        "by": "cli"
+    }
+]

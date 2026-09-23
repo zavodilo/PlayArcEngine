@@ -1,0 +1,45 @@
+{
+    "id": "arcengine-sample-2d",
+    "name": "ArcEngine Sample — Pixel 2D",
+    "profile": "2d",
+    "enabled": true,
+    "description": "Top-down pixel presentation of the same game: orthographic camera, flat ground, sprites for every entity, tiles for the logical map, no shading model.",
+    "createdBy": "author",
+    "createdFrom": "arcengine-sample-lowpoly3d",
+    "camera": {
+        "mode": "topdown",
+        "follow": "character",
+        "azimuthDeg": -90,
+        "elevationDeg": 88,
+        "orthoHeightPx": 360,
+        "zoom": 1,
+        "orbit": false
+    },
+    "lighting": {
+        "preset": "flat",
+        "shadows": 0,
+        "toon": 0,
+        "ink": 0,
+        "outline": 0,
+        "fog": 0
+    },
+    "materials": {
+        "shading": "unlit"
+    },
+    "environment": {
+        "ground": "tilemap",
+        "flatten": 1,
+        "tilePx": 64
+    },
+    "animation": {
+        "style": "sprite-frames"
+    },
+    "ui": {
+        "space": "screen",
+        "pixelSnap": true
+    },
+    "audio": {
+        "spatial": false
+    },
+    "visualMappings": "presentation/mappings/arcengine-sample-2d.json"
+}

@@ -1,0 +1,29 @@
+{
+    "id": "arcengine-sample-lowpoly3d",
+    "name": "ArcEngine Sample — Stylized 3D",
+    "profile": "lowpoly3d",
+    "enabled": true,
+    "description": "The kit's default look: perspective camera, toon bands, ink edges and silhouette outline, exactly as Constants.js authors it. This is project.json's defaultVariant.",
+    "createdBy": "author",
+    "createdFrom": null,
+    "camera": {
+        "mode": "orbit",
+        "follow": null,
+        "azimuthDeg": -90,
+        "elevationDeg": 57,
+        "orbit": true
+    },
+    "lighting": {
+        "preset": "isometric",
+        "toon": 1,
+        "ink": 2,
+        "outline": 2,
+        "shadows": 1
+    },
+    "materials": { "shading": "toon" },
+    "environment": { "ground": "low-poly-terrain", "flatten": 0 },
+    "animation": { "style": "skeletal" },
+    "ui": { "space": "screen" },
+    "audio": { "spatial": true },
+    "visualMappings": "presentation/mappings/arcengine-sample-lowpoly3d.json"
+}

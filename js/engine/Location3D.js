@@ -45,10 +45,21 @@ class Location3D {
         this.terrain = new Terrain3D(this.view, {
             worldW: this.width,
             worldH: this.height,
-            groundImage: this._groundImage
+            groundImage: this._groundImage,
+            // Presentation override (js/engine/Visual3D.js): a 2D profile asks for a flat
+            // ground, a 3D one for the authored hills. null — the TERRAIN_* constants.
+            noise: this.opts.noise || null,
+            cell: this.opts.cell != null ? this.opts.cell : null
         });
         this.placeObjects();
         return this.terrain;
+    }
+
+    // Ground shape is presentation, not gameplay: noise = { amp, scale, seed, base }
+    // (null — the TERRAIN_* constants). Rebuilds the terrain and resettles the objects.
+    setTerrainNoise(noise) {
+        this.opts.noise = noise || null;
+        return this.buildTerrain();
     }
 
     // --- Location objects -----------------------------------------------------------
@@ -137,8 +148,19 @@ class Location3D {
     /** @param {LocationObject} rec */
     applyHidden(rec) {
         if (!rec.mesh) return;
-        const hidden = !!rec.def.hidden;
+        // def.hidden is the editor's canon (Objects.js); rec.suppressed is presentation: the
+        // semantic layer hides a model while a profile shows the entity as a sprite instead
+        // (js/engine/Visual3D.js). Neither touches the other.
+        const hidden = !!rec.def.hidden || !!rec.suppressed;
         rec.mesh.enabled = !hidden;
+    }
+
+    /** Presentation-only visibility (never written into Objects.js). */
+    setSuppressed(rec, on) {
+        if (!rec) return false;
+        rec.suppressed = !!on;
+        this.applyHidden(rec);
+        return rec.suppressed;
     }
 
     // Object animation frame — before World3D.renderFrame().

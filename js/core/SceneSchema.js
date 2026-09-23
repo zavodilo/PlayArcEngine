@@ -940,6 +940,103 @@ const SCENE_SCHEMA = {
             "options": null,
             "label": "Stereo width",
             "value": 0.7
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_ORTHO_DIST",
+            "min": 500,
+            "max": 8000,
+            "step": 100,
+            "kind": "number",
+            "options": null,
+            "label": "Ortho camera distance (px)",
+            "value": 3000
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_ORTHO_HEIGHT",
+            "min": 120,
+            "max": 2000,
+            "step": 10,
+            "kind": "number",
+            "options": null,
+            "label": "Ortho half height (px)",
+            "value": 540
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_TILE_PX",
+            "min": 8,
+            "max": 512,
+            "step": 8,
+            "kind": "number",
+            "options": null,
+            "label": "Logical tile (px)",
+            "value": 64
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_SPRITE_HEIGHT",
+            "min": 16,
+            "max": 512,
+            "step": 8,
+            "kind": "number",
+            "options": null,
+            "label": "Sprite height (px)",
+            "value": 96
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_SPRITE_ASPECT",
+            "min": 0.1,
+            "max": 4,
+            "step": 0.05,
+            "kind": "number",
+            "options": null,
+            "label": "Placeholder aspect (w/h)",
+            "value": 0.75
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_SIDE_EYE_PX",
+            "min": 0,
+            "max": 600,
+            "step": 10,
+            "kind": "number",
+            "options": null,
+            "label": "Side view eye height (px)",
+            "value": 90
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_MAX_TILES",
+            "min": 16,
+            "max": 20000,
+            "step": 16,
+            "kind": "number",
+            "options": null,
+            "label": "Max drawn tiles",
+            "value": 1500
+        },
+        {
+            "group": "visual-profile",
+            "name": "PROFILE_BUDGET_STRICT",
+            "min": null,
+            "max": null,
+            "step": null,
+            "kind": "select",
+            "options": [
+                {
+                    "value": 0,
+                    "label": "warn"
+                },
+                {
+                    "value": 1,
+                    "label": "fail the conversion"
+                }
+            ],
+            "label": "Budget violations",
+            "value": 0
         }
     ],
     "object": {

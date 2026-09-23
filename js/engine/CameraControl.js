@@ -42,6 +42,11 @@ class CameraController {
         this.pitch = 1;
         this.zoom = 1;
         this.zoomTarget = 1;
+        // Projection is presentation, not gameplay: the 2D / 2.5D / isometric profiles ask
+        // for an orthographic camera (js/engine/Camera3D.js sets these two fields), the 3D
+        // profiles keep the perspective one. Nothing else in the controller changes.
+        this.projection = 'perspective';
+        this.orthoHeightPx = (typeof PROFILE_ORTHO_HEIGHT !== 'undefined' && PROFILE_ORTHO_HEIGHT > 0) ? PROFILE_ORTHO_HEIGHT : 540;
         this.followObj = null;
         this.ignorePointer = null;     // (e) => true — the press is not for the camera (editor: gizmo under the cursor)
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
@@ -158,8 +163,21 @@ class CameraController {
     // --- Screen <-> world ---------------------------------------------------------
 
     distance() {
+        // An orthographic frustum has no perspective: the eye distance only has to keep the
+        // scene inside near/far clip, so it is a constant (PROFILE_ORTHO_DIST).
+        if (this.projection === 'orthographic') {
+            return (typeof PROFILE_ORTHO_DIST !== 'undefined' && PROFILE_ORTHO_DIST > 0) ? PROFILE_ORTHO_DIST : 3000;
+        }
         const h = (this.view.world.canvas && this.view.world.canvas.clientHeight) || 600;
         return h / (2 * Math.tan(this.cam.fov / 2) * Math.max(0.02, this.zoom));
+    }
+
+    // Half height of the orthographic frustum in world px: the same "screen px per world px"
+    // meaning zoom has in the perspective path, so a zoom level looks the same in both.
+    orthoHeight() {
+        const cv = this.view.world.canvas;
+        const h = (cv && cv.clientHeight) || this.orthoHeightPx * 2;
+        return Math.max(1, h / (2 * Math.max(0.02, this.zoom)));
     }
 
     // World px per screen px at the look-at point.
@@ -539,6 +557,18 @@ class CameraController {
         this._apply();
     }
 
+    // Projection and ortho frustum from this.projection / zoom (cheap, idempotent).
+    _applyProjection() {
+        const cc = this.view.camComp;
+        if (!cc) return;
+        if (this.projection === 'orthographic') {
+            if (cc.projection !== pc.PROJECTION_ORTHOGRAPHIC) cc.projection = pc.PROJECTION_ORTHOGRAPHIC;
+            cc.orthoHeight = this.orthoHeight();
+        } else if (cc.projection !== pc.PROJECTION_PERSPECTIVE) {
+            cc.projection = pc.PROJECTION_PERSPECTIVE;
+        }
+    }
+
     // Babylon camera position and target: back from the target along the azimuth by the
     // distance from zoom, at angle pitch to the ground, no lower than ground + EYE_MIN.
     _syncCamera() {
@@ -561,6 +591,7 @@ class CameraController {
 
     _apply() {
         this._syncCamera();
+        this._applyProjection();
         // Shadow frustum — fit to objects within the visible area: the tighter, the sharper the shadow.
         // The area is around the ground point at the frame center (in flight it is ahead of the target).
         const cv = this.view.world.canvas, g = this.groundFocus();

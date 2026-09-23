@@ -51,6 +51,7 @@ const World3D = {
     toon: null,            // toon shader state — ArcToon below
     _fps: 60,
     _lastT: 0,
+    _lastDt: 0,
 
     // Render layers (pc.Layer order), the depth buffer is SHARED (see View3D):
     //   WORLD   — the ground and everything standing on it (the engine's World layer);
@@ -60,7 +61,19 @@ const World3D = {
     //   ACTOR   — objects that go last: OVERLAY paint does not land on top of them,
     //             but they hide behind walls honestly.
     LAYER: { WORLD: 0, OVERLAY: 1, ACTOR: 2 },
-    LAYER_ID: { OVERLAY: 11, ACTOR: 12 },   // pc.Layer ids (0..10 are the engine's own)
+    LAYER_ID: { OVERLAY: 11, ACTOR: 12, SPRITE: 13 },   // pc.Layer ids (0..10 are the engine's own)
+
+    // Presentation-layer overrides of the render constants (a variant's lighting preset,
+    // js/engine/Lighting3D.js). cfg() merges them, so the editor's Constants.js edits and a
+    // render profile compose instead of fighting — and no constant is ever rewritten.
+    /** @type {any | null} */
+    lightOverrides: null,
+
+    /** Set/clear the overrides (null — the constants alone decide). */
+    setLightOverrides(o) {
+        World3D.lightOverrides = (o && Object.keys(o).length) ? Object.assign({}, o) : null;
+        return World3D.lightOverrides;
+    },
 
     available() {
         return typeof pc !== 'undefined' && !!this.app;
@@ -134,6 +147,7 @@ const World3D = {
         const now = performance.now();
         const dt = Math.min(0.1, Math.max(0.0001, (now - (this._lastT || now)) / 1000));
         this._lastT = now;
+        this._lastDt = dt;      // sprite frame animation (Sprite2D) advances on this
         this._fps += (1 / dt - this._fps) * 0.05;
         const v = this.view;
         if (v && v.active) {
@@ -159,7 +173,7 @@ const World3D = {
     // window, only by typeof on the identifier.
     cfg() {
         const U = 'undefined';
-        return {
+        const c = {
             sunAz: typeof WORLD3D_SUN_AZIMUTH_DEG !== U ? WORLD3D_SUN_AZIMUTH_DEG : 53,
             sunEl: typeof WORLD3D_SUN_ELEVATION_DEG !== U ? WORLD3D_SUN_ELEVATION_DEG : 48,
             sunIntensity: typeof WORLD3D_SUN_INTENSITY !== U ? WORLD3D_SUN_INTENSITY : 0.8,
@@ -200,6 +214,8 @@ const World3D = {
             inkColor: typeof WORLD3D_TOON_INK_COLOR !== U ? WORLD3D_TOON_INK_COLOR : 0x10141a,
             inkAngle: typeof WORLD3D_TOON_INK_ANGLE !== U ? WORLD3D_TOON_INK_ANGLE : 40
         };
+        // A variant's lighting preset is the last word (see setLightOverrides).
+        return World3D.lightOverrides ? Object.assign(c, World3D.lightOverrides) : c;
     },
 
     // Live application of render constants to the view (editor): light, shadows,

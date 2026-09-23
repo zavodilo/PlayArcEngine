@@ -1,0 +1,51 @@
+{
+    "id": "arcengine-sample",
+    "name": "ArcEngine Sample",
+    "kit": "ArcEngine",
+    "version": "0.1.0",
+    "schemaVersion": 1,
+    "defaultVariant": "arcengine-sample-lowpoly3d",
+    "profiles": [
+        "2d",
+        "2.5d",
+        "isometric3d",
+        "lowpoly3d",
+        "full3d"
+    ],
+    "variants": [
+        "arcengine-sample-2.5d",
+        "arcengine-sample-2d",
+        "arcengine-sample-full3d",
+        "arcengine-sample-isometric3d",
+        "arcengine-sample-lowpoly3d"
+    ],
+    "variantFiles": {
+        "arcengine-sample-2.5d": "presentation/variants/arcengine-sample-2.5d.json",
+        "arcengine-sample-2d": "presentation/variants/arcengine-sample-2d.json",
+        "arcengine-sample-full3d": "presentation/variants/arcengine-sample-full3d.json",
+        "arcengine-sample-isometric3d": "presentation/variants/arcengine-sample-isometric3d.json",
+        "arcengine-sample-lowpoly3d": "presentation/variants/arcengine-sample-lowpoly3d.json"
+    },
+    "gameModel": "js/GameSpec.js",
+    "assetRegistry": "GAME_SPEC.assets + presentation/mappings/*.json",
+    "runtime": {
+        "entry": "js/presentation/Runtime.js (PlayArcRuntime.start)",
+        "url": "/?project=arcengine-sample&variant=<variantId>",
+        "cli": "node tools/arc.mjs run --variant <variantId>",
+        "all": "node tools/arc.mjs run --all"
+    },
+    "shared": {
+        "gameplay": "ONE Game Model for every variant: rules, systems, world, entities, progression, save schema",
+        "entityIds": [
+            "character",
+            "mill"
+        ],
+        "scenes": [
+            "gameplay",
+            "main-menu",
+            "map",
+            "inventory"
+        ]
+    },
+    "generated": "tools/variants.mjs from js/GameSpec.js + presentation/variants/*.json"
+}

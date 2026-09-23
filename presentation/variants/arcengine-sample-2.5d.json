@@ -1,0 +1,24 @@
+{
+    "id": "arcengine-sample-2.5d",
+    "name": "ArcEngine Sample — Hybrid 2.5D",
+    "profile": "2.5d",
+    "enabled": true,
+    "description": "2D characters in a 3D world: the hero keeps its sprite as a billboard, the mill and the ground are real 3D, the camera is a tilted orthographic one.",
+    "createdBy": "author",
+    "createdFrom": "arcengine-sample-2d",
+    "camera": {
+        "mode": "isometric",
+        "follow": "character",
+        "azimuthDeg": -90,
+        "elevationDeg": 60,
+        "orthoHeightPx": 420,
+        "orbit": false
+    },
+    "lighting": { "preset": "stylized", "shadows": 1, "toon": 1, "ink": 1, "outline": 1 },
+    "materials": { "shading": "toon" },
+    "environment": { "ground": "plane+sprites", "flatten": 0, "tilePx": 64 },
+    "animation": { "style": "hybrid" },
+    "ui": { "space": "screen" },
+    "audio": { "spatial": true },
+    "visualMappings": "presentation/mappings/arcengine-sample-2.5d.json"
+}
