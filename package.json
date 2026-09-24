@@ -1,16 +1,46 @@
 {
   "name": "create-arcengine",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Scaffold a zero-dependency 3D browser-game kit on PlayCanvas 2, with AI agent skills (Claude Code, Codex, Cursor). The kit runtime itself needs no npm and no build step.",
   "license": "MIT",
   "bin": {
     "create-arcengine": "tools/create-arcengine.mjs"
   },
   "files": [
-    "tools/", "js/", "libs/", "assets/", "claude/", "scaffold/", "_utils/", "tests/",
-    "index.html", "CLAUDE.md", "README.md", "NOTICE", "ROADMAP.md", "LICENSE",
-    "globals.d.ts", "tsconfig.json", "*.bat"
+    "tools/",
+    "js/",
+    "libs/",
+    "assets/",
+    "claude/",
+    "scaffold/",
+    "_utils/",
+    "tests/",
+    "manifest/",
+    "presentation/",
+    "project.json",
+    "index.html",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "USER_GUIDE.md",
+    "NOTICE",
+    "ROADMAP.md",
+    "LICENSE",
+    "globals.d.ts",
+    "tsconfig.json",
+    "*.bat",
+    "*.sh"
   ],
-  "engines": { "node": ">=20" },
-  "keywords": ["playcanvas", "game-kit", "ai-skills", "claude", "codex", "cursor", "webgl2"]
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "playcanvas",
+    "game-kit",
+    "ai-skills",
+    "claude",
+    "codex",
+    "cursor",
+    "webgl2"
+  ]
 }

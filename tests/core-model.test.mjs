@@ -57,7 +57,19 @@ test('GameModel: boot, systems by phase, rules, and a gameplay hash that ignores
     GameModel.run(0.5);
     assert.ok(ran >= 0.5);
     GameModel.offSystem('test-logic');
-    assert.equal(GameModel.param('movement.speed', 'run', 1), 260);
+    // Rules come from THIS project's GAME_SPEC (the kit's sample is not the contract): take the
+    // first numeric param of the first rule and read it back through GameModel.param.
+    // A minimal project (the `empty` starter) declares no rules at all — that is legal, so the
+    // rule check runs only when the spec has one with a numeric param.
+    const spec = GameModel.spec;
+    const withNumbers = Object.entries(spec.rules || {})
+        .map(([id, r]) => [id, Object.entries(r.params || {}).find(([, v]) => typeof v === 'number')])
+        .find(([, pv]) => pv);
+    if (withNumbers) {
+        const [ruleId, [paramKey, paramValue]] = withNumbers;
+        assert.equal(GameModel.param(ruleId, paramKey, -12345), paramValue, 'GameModel.param reads the spec');
+        assert.equal(GameModel.param(ruleId, 'no-such-param', -12345), -12345, 'an unknown param falls back');
+    }
     // switching the presentation must not move the hash: it covers gameplay only
     kit.PlayArcRuntime.start({ profile: '2d', apply: false });
     assert.equal(GameModel.gameplayHash(), hash, 'the gameplay hash is presentation-independent');
@@ -66,15 +78,18 @@ test('GameModel: boot, systems by phase, rules, and a gameplay hash that ignores
 
 test('Save: a save has no profile in it and loads in any variant', () => {
     kit.PlayArcRuntime.start({ profile: 'full3d', apply: false });
-    const hero = GameModel.entity('character');
-    hero.set('energy', 0.42);
+    // The first entity of THIS project (a starter may declare none — the schema round trip still
+    // has to hold, and 'restored' is then 0 of 0).
+    const hero = GameModel.entities[0] || null;
+    if (hero) hero.set('energy', 0.42);
     const data = Save.serialize({ slot: 'unit' });
     assert.ok(!('profile' in data) || data.presentedWith, 'the profile is recorded for information only');
     assert.equal(data.schemaVersion, Save.schema().schemaVersion);
+    assert.equal(data.game, GameModel.spec.id);
     kit.PlayArcRuntime.start({ profile: '2d', apply: false });
     const r = Save.restore(data);
     assert.equal(r.restored, GameModel.entities.length);
-    assert.equal(Number(GameModel.entity('character').get('energy')).toFixed(2), '0.42');
+    if (hero) assert.equal(Number(GameModel.entity(hero.id).get('energy')).toFixed(2), '0.42');
     assert.equal(GameModel.gameplayHash(), kit.GAME_SPEC ? GameModel.gameplayHash() : null);
 });
 

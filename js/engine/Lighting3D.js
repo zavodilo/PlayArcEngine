@@ -47,9 +47,13 @@ const Lighting3D = {
         if (s.toon != null) o.toon = s.toon ? 1 : 0;
         if (s.ink != null) o.ink = Math.max(0, Math.min(2, Number(s.ink) || 0));
         if (s.outline != null) o.outline = Math.max(0, Math.min(2, Number(s.outline) || 0));
-        if (s.shadows === 0 || s.shadows === false) { o.shadowStrength = 0; }
-        else if (s.shadows === 1 || s.shadows === true) { if (o.shadowStrength === 0) delete o.shadowStrength; }
-        // a flat preset must not quantize anything
+        // `shadows` is the shadow MAP switch — apply() turns view.sun.castShadows off for 0. It
+        // must NOT zero `shadowStrength`: that is the toon shadow TINT (World3D.cfg().shadowColor
+        // /shadowStrength), which a game keeps while casting no shadow map at all — a stylized 3D
+        // game with blob shadows, or one whose shadow map is off on mobile. Zeroing it here
+        // flattened the shading of every project that declared shadows: 0 (found porting
+        // Wanderburg: no shadow map, shadowStrength 0.5). The flat preset still wants both off
+        // and says so explicitly below.
         if (s.preset === 'flat') { o.toon = 0; o.ink = 0; o.outline = 0; o.shadowStrength = 0; o.fog = 0; }
         return o;
     },

@@ -2,7 +2,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "arcengine/manifest/game-schema.json",
     "title": "ArcEngine GameModel spec (GAME_SPEC)",
-    "description": "The canonical description of a game: renderer-independent. js/GameSpec.js declares GAME_SPEC in exactly this shape; js/core/GameModel.js boots from it and validates against it (tools/game-model.mjs --check). Nothing here mentions PlayCanvas, a renderer or a visual file format: visuals live in the asset registry keyed by render profile.",
+    "description": "The canonical description of a game: renderer-independent. js/GameSpec.js declares GAME_SPEC in exactly this shape; js/core/GameModel.js boots from it and validates it (GameModel.validate); `node tools/variants.mjs validate --all` boots every variant against the model. Nothing here mentions PlayCanvas, a renderer or a visual file format: visuals live in the asset registry keyed by render profile.",
     "type": "object",
     "required": ["id", "title", "renderProfile", "world", "entities"],
     "additionalProperties": false,

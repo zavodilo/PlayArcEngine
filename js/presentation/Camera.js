@@ -46,7 +46,11 @@ const Camera = {
             orthoHeightPx: Camera._num(c.orthoHeightPx, 540),
             fovDeg: Camera._num(c.fovDeg, 52),
             distance: Camera._num(c.distance, null),
-            zoom: Camera._num(c.zoom, 1),
+            // null — nobody authored a zoom (profile, preset, variant): the controller keeps the
+            // zoom the game/constants gave it, and Camera3D.apply leaves it alone. Defaulting to
+            // 1 here silently re-zoomed every game whose CAMERA_ZOOM is not 1 (a phone build, a
+            // game that zooms per state) the moment a variant was applied.
+            zoom: Camera._num(c.zoom, null),
             zoomMin: Camera._num(c.zoomMin, 0.4),
             zoomMax: Camera._num(c.zoomMax, 4),
             follow: c.follow === undefined ? null : (c.follow || null),
@@ -126,9 +130,11 @@ const Camera = {
 
     /** Camera.zoom(1.4) — read with no argument. Clamped to the profile/variant range. */
     zoom(z) {
-        if (z === undefined) return Camera._params ? Camera._params.zoom : 1;
+        // A reader always gets a number: null (nobody authored a zoom) reads as 1 — "as authored
+        // in Constants.js", which is exactly the zoom the controller is holding.
+        if (z === undefined) return (Camera._params && Camera._params.zoom != null) ? Camera._params.zoom : 1;
         const p = Camera.params();
-        const clamped = Math.max(p.zoomMin, Math.min(p.zoomMax, Number(z) || p.zoom));
+        const clamped = Math.max(p.zoomMin, Math.min(p.zoomMax, Number(z) || (p.zoom != null ? p.zoom : 1)));
         Camera._runtime.zoom = clamped;
         if (Camera._params) Camera._params.zoom = clamped;
         return Camera.push();

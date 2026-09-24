@@ -78,8 +78,10 @@
                         "sunIntensity": { "type": "number" },
                         "sunColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
                         "skyColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-                        "shadows": { "type": "integer", "enum": [0, 1] },
-                        "toon": { "type": "integer", "enum": [0, 1] },
+                        "shadows": { "type": "integer", "enum": [0, 1], "description": "the shadow MAP (view.sun.castShadows): 0 — no caster pass. It does NOT touch shadowStrength, the toon shadow tint, which a stylized game keeps while casting no map (blob shadows, mobile)" },
+                        "toon": { "type": "integer", "enum": [0, 1], "description": "toon banding: 1 — banded stylized light, 0 — smooth/PBR" },
+                        "ink": { "type": "integer", "enum": [0, 1, 2], "description": "ink edges between faces: 0 — none, 1 — main objects, 2 — environment too" },
+                        "outline": { "type": "integer", "enum": [0, 1, 2], "description": "outer silhouette outline (inverted hull / post effect): 0 — none, 1 — main objects, 2 — environment too" },
                         "overrides": { "type": "object", "description": "raw World3D.cfg() keys (sunIntensity, toonBands…): the last word, used sparingly" }
                     }
                 },

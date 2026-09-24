@@ -138,12 +138,22 @@ const VisualEntity = {
         const c = cfg || (typeof RenderProfile !== 'undefined' ? RenderProfile.config() : { id: '2d' });
         const report = {
             profile: c.id, variant: c.variant || null, bindings: 0, created: 0, updated: 0, removed: 0,
-            unchanged: 0, placeholders: 0, fallbacks: 0, missing: 0, byType: {}, headless: !VisualEntity._backend, deferred: []
+            unchanged: 0, placeholders: 0, fallbacks: 0, missing: 0, byType: {}, headless: !VisualEntity._backend, deferred: [],
+            // A project may present its own entities (a custom view module on the engine layer:
+            // Wanderburg builds every mesh in js/WanderMesh.js). Such an entity declares
+            // representation 'none', gets no binding, and must still COUNT as presented — without
+            // this a self-presenting game looked like "the profile presents nothing".
+            selfPresented: 0, selfPresentedIds: [], invisible: 0
         };
         const wanted = new Map();
         for (const e of list) {
             const d = VisualEntity.desired(e, c);
-            if (!d) continue;
+            if (!d) {
+                const req = (e && typeof e.visualRequest === 'function') ? e.visualRequest(c.id) : null;
+                if (req && req.type === 'none') { report.selfPresented++; report.selfPresentedIds.push(e.id); }
+                else report.invisible++;          // a trigger, a zone, a spawn point: no visual by nature
+                continue;
+            }
             wanted.set(e.id, d);
             report.byType[d.type] = (report.byType[d.type] || 0) + 1;
             if (d.resolvedBy === 'placeholder') report.placeholders++;
@@ -320,7 +330,15 @@ const VisualEntity = {
         if (typeof b.maxAnimatedEntities === 'number' && animated > b.maxAnimatedEntities) {
             warnings.push('maxAnimatedEntities ' + animated + ' > ' + b.maxAnimatedEntities);
         }
-        const visible = list.filter(e => !(e.visual && e.visual.representation === 'none')).length;
+        // What this presentation actually draws: an entity is invisible to the budget when it
+        // declares 'none' (self-presented) — globally or for the profile being checked.
+        const pid = (typeof RenderProfile !== 'undefined' && RenderProfile.id) ? RenderProfile.id() : null;
+        const selfPresented = (e) => {
+            if (!e || !e.visual) return false;
+            if (pid && e.visual.profiles && e.visual.profiles[pid] && e.visual.profiles[pid].type === 'none') return true;
+            return e.visual.representation === 'none';
+        };
+        const visible = list.filter(e => !selfPresented(e)).length;
         if (typeof b.maxDrawCalls === 'number' && visible > b.maxDrawCalls) {
             warnings.push('maxDrawCalls: ' + visible + ' visible entities exceed the budget (batch or instance them)');
         }

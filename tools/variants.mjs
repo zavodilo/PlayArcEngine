@@ -427,7 +427,13 @@ const commands = {
     'create-all'() {
         const { kit } = boot({ quiet: true });
         const created = kit.Variant.createAll({ by: 'cli' });
-        for (const c of created) if (!c.existed) persistVariant(kit, c.id);
+        // Materialize every profile: Variant.boot() creates the missing ones in memory (so the
+        // runtime always has a full set), which used to make this command report "kept" and
+        // write NOTHING when presentation/variants/ was empty. The disk is the canon — a
+        // variant that has no file gets one, whether it was just created or bootstrapped.
+        for (const c of created) {
+            if (!c.existed || !fs.existsSync(path.join(VARIANTS_DIR, c.id + '.json'))) persistVariant(kit, c.id);
+        }
         generate();
         say('variants: ' + created.length + ' profile(s) covered — ' + created.map(c => c.id + (c.existed ? ' (kept)' : ' (new)')).join(', '));
     },
