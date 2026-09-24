@@ -102,3 +102,55 @@ test('GameAnimation: semantic states are shared; the profile only picks the repr
     assert.match(s3.system, /skeletal/);
     assert.deepEqual(JSON.parse(JSON.stringify(s2.states)), JSON.parse(JSON.stringify(GameAnimation.statesFor('2d'))));
 });
+
+// Two hashes, two jobs. gameplayHash() covers the LIVE model (positions, logic, progression): it
+// is what a migration must preserve inside one session. contractHash() covers the game DEFINITION
+// (rules, systems, the authored world, entity identities, scenes, roles, input, cue ids, the save
+// schema): it is what "five variants of one project share one game" means across instances. A game
+// that mirrors its simulation into the model — the normal case — moves the first hash every frame
+// and must not move the second. Found porting Wanderburg: the browser gate compared live hashes of
+// five playing tabs and concluded the variants "do not share one game".
+test('contract hash: живое состояние его не двигает, а смена профиля — тем более', () => {
+    kit.PlayArcRuntime.start({ profile: 'lowpoly3d', apply: false });
+    const contract = GameModel.contractHash();
+    const live = GameModel.gameplayHash();
+    assert.ok(contract && /^[0-9a-f]{8}$/.test(contract), 'the contract hash is 8 hex digits');
+
+    // play: move an entity, damage it, spend currency, switch the scene
+    const e = GameModel.entities[0];
+    if (e) { e.setPosition(Coords.vec(11, 22, 33)); e.set('health', 1); e.setHeading(123); }
+    if (GameModel.progression) { GameModel.progression.xp = 999; GameModel.progression.level = 4; }
+    const scenes = GameModel.scenes();
+    if (scenes.length > 1) GameModel.activeScene = scenes[scenes.length - 1].id;
+
+    assert.equal(GameModel.contractHash(), contract, 'playing does not change what the game IS');
+    if (e) assert.notEqual(GameModel.gameplayHash(), live, '...while the live state hash does move');
+
+    // every profile boots the same contract — the cross-instance invariant the gate checks
+    for (const pid of ['2d', '2.5d', 'isometric3d', 'lowpoly3d', 'full3d']) {
+        kit.PlayArcRuntime.start({ profile: pid, apply: false });
+        assert.equal(GameModel.contractHash(), contract, pid + ' boots the same game');
+        assert.equal(PlayArcRuntimeContextContract(kit), contract, pid + ': the runtime context carries it');
+    }
+
+    // and it is sensitive to what it must be: a rule, an entity id, the save schema
+    const spec = JSON.parse(JSON.stringify(GameModel.spec));
+    const ruleId = Object.keys(spec.rules || {})[0];
+    if (ruleId) {
+        const edited = JSON.parse(JSON.stringify(spec));
+        const key = Object.keys(edited.rules[ruleId].params || {})[0];
+        if (key != null) {
+            edited.rules[ruleId].params[key] = Number(edited.rules[ruleId].params[key]) + 1;
+            GameModel.boot(edited);
+            assert.notEqual(GameModel.contractHash(), contract, 'a balance edit changes the contract');
+        }
+    }
+    GameModel.boot(spec);                                    // restore
+    assert.equal(GameModel.contractHash(), contract);
+});
+
+/** The runtime context of a booted instance (PlayArcRuntime.context()). */
+function PlayArcRuntimeContextContract(k) {
+    const ctx = k.PlayArcRuntime.context();
+    return ctx ? ctx.contractHash : null;
+}

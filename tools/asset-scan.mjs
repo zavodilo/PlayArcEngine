@@ -49,6 +49,35 @@ export const BUILD_EXCLUDE = [
 
 const SCAN_EXT = new Set(['.js', '.html', '.css']);
 
+// Asset literals are CODE, not prose: a path inside a comment is a documentation example, and
+// counting it as a reference drags dead art into every player archive (the kit's own header
+// example Scene.spawn('assets/models/mill.fbx', …) shipped mill.fbx — 338 KB — with every
+// scaffolded game that never loads a model). String-aware stripper: quotes win over slashes,
+// so 'https://…' inside a literal survives and a quoted path inside a comment does not.
+function stripComments(text) {
+  let out = '', i = 0, quote = null, line = null;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i], d = text[i + 1];
+    if (line === 'block') {
+      if (c === '*' && d === '/') { line = null; i += 2; } else i++;
+      continue;
+    }
+    if (quote) {
+      out += c;
+      if (c === '\\') { out += d || ''; i += 2; continue; }
+      if (c === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; out += c; i++; continue; }
+    if (c === '/' && d === '/') { while (i < n && text[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { line = 'block'; i += 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
 async function walk(dir, root, out = []) {
   for (const e of await fsp.readdir(dir, { withFileTypes: true })) {
     if (BUILD_EXCLUDE.includes(e.name) || e.name.startsWith('.')) continue;
@@ -75,7 +104,7 @@ export async function collectRefs(root) {
   for (const rel of all) {
     if (!SCAN_EXT.has(path.extname(rel).toLowerCase())) continue;
     if (rel.startsWith('libs/')) continue;           // third-party libraries are left alone
-    const text = await fsp.readFile(path.join(root, rel), 'utf8');
+    const text = stripComments(await fsp.readFile(path.join(root, rel), 'utf8'));
     for (const m of text.matchAll(rx)) {
       refs.add(m[1].split('?')[0].split('#')[0]);
     }
@@ -89,8 +118,14 @@ export async function collectRefs(root) {
   const fileRefs = [];
   for (const r of [...refs].sort()) {
     const clean = r.replace(/\/+$/, '');
-    let isDir = false;
-    try { isDir = (await fsp.stat(path.join(root, clean))).isDirectory(); } catch { /* not on disk — the regular check below */ }
+    // A trailing slash is a folder reference BY SYNTAX, whether or not the folder exists yet:
+    // the code assembles the files inside it from pieces, and the pipeline creates the folder
+    // when it writes placeholders (Migration.VISUAL_DIR = 'assets/visual/'). Treating an absent
+    // folder as a missing FILE reported a 404 that can never happen.
+    let isDir = clean !== r;
+    if (!isDir) {
+      try { isDir = (await fsp.stat(path.join(root, clean))).isDirectory(); } catch { /* not on disk — the regular check below */ }
+    }
     if (isDir) { dirs.push(clean); refs.delete(r); } else fileRefs.push(r);
   }
 

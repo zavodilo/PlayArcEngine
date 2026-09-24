@@ -109,7 +109,8 @@
                 "url": { "type": ["string", "null"] },
                 "instance": { "type": ["string", "null"], "description": "tab/instance id: several variants of one project run side by side" },
                 "startedAt": { "type": ["string", "null"] },
-                "gameplayHash": { "type": ["string", "null"], "description": "identical in every variant of a project — the proof that gameplay is shared" },
+                "contractHash": { "type": ["string", "null"], "description": "the game DEFINITION (rules, systems, the authored world, entity identities, scenes, roles, input, cue ids, the save schema): identical in every variant and every tab of a project — the proof that the variants share one game" },
+                "gameplayHash": { "type": ["string", "null"], "description": "the LIVE model state (positions, logic, progression): a migration's preservation proof inside one session. Two playing tabs of one project legitimately differ" },
                 "saveSchemaHash": { "type": ["string", "null"], "description": "identical in every variant — a save loads anywhere" },
                 "headless": { "type": "boolean" }
             }

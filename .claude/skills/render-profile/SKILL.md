@@ -78,4 +78,10 @@ node tools/check.mjs --profiles                # the headless profile/migration 
 1. `node tools/check.mjs` (types, tests, skills sync, manifests, drift)
 2. `node tools/check.mjs --profiles` (every profile presents, every conversion preserves)
 3. with a browser environment: `node tools/check.mjs --variants` (five live runtime instances)
-4. gameplay proof: `PlayArcRuntime.context().gameplayHash` identical before/after.
+4. gameplay proof, one session: `GameModel.gameplayHash()` identical before/after a conversion
+   (it covers LIVE model state — positions, logic, progression — so it only means something
+   inside the session that made the conversion).
+5. shared-game proof, across instances: `PlayArcRuntime.context().contractHash` and
+   `saveSchemaHash` identical in every variant/tab (the contract covers the spec: rules, systems,
+   the authored world, entity identities, scenes, roles, input, cue ids, the save schema — never
+   live state, so a playing game does not move it).

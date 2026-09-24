@@ -57,8 +57,16 @@ class Location3D {
 
     // Ground shape is presentation, not gameplay: noise = { amp, scale, seed, base }
     // (null — the TERRAIN_* constants). Rebuilds the terrain and resettles the objects.
+    //
+    // IDEMPOTENT: asking for the shape the location already has is a no-op. The presentation
+    // layer calls this on every variant activation (js/engine/Visual3D.js → world()), so
+    // without the check a boot cost a second full height field, and — worse — a game that builds
+    // its own terrain (baked height details, a mountain ring, a hand-made ground) had it disposed
+    // and replaced by the constants' ground on every activation. Found porting Wanderburg.
     setTerrainNoise(noise) {
-        this.opts.noise = noise || null;
+        const next = noise || null;
+        if (this.terrain && Location3D.sameNoise(this.opts.noise || null, next)) return this.terrain;
+        this.opts.noise = next;
         return this.buildTerrain();
     }
 
@@ -296,6 +304,14 @@ class Location3D {
 }
 
 Location3D.GHOST_ALPHA = 0.35;   // a hidden object in the editor (opts.showHidden)
+
+// Two ground-shape overrides are the same when they carry the same numbers (key order aside).
+// null means "the TERRAIN_* constants", and equals only null.
+Location3D.sameNoise = (a, b) => {
+    if (!a || !b) return !a && !b;
+    const norm = (o) => Object.keys(o).sort().map(k => k + '=' + Number(o[k])).join(',');
+    return norm(a) === norm(b);
+};
 
 // Ground textures by LOCATION_GROUND: 0 — grass, 1 — sand, 2 — snow.
 Location3D.GROUNDS = [

@@ -44,7 +44,9 @@ function checkProfile(kit, profileId) {
     const cfg = kit.RenderProfile.config();
     out.checks.scene = !!kit.GameModel.activeScene;
     out.checks.entities = kit.GameModel.entities.length;
-    if (!out.checks.entities) fail('no entities');
+    // A project may declare no entities yet (the `empty` starter, a game that spawns everything
+    // from code): legal, but then there is nothing to present and the checks below are vacuous.
+    if (!out.checks.entities) out.checks.noEntities = true;
     out.checks.entityIds = kit.GameModel.entities.map(e => e.id);
     out.checks.gameplayHash = kit.GameModel.gameplayHash();
     out.checks.saveSchemaHash = kit.Save.schemaHash();
@@ -57,14 +59,22 @@ function checkProfile(kit, profileId) {
     // assets resolve for this profile (a placeholder counts as resolved, and is reported)
     const roles = kit.AssetRegistry.roles();
     let resolved = 0, placeholders = 0;
+    const unresolved = [];
     for (const r of roles) {
         const res = kit.AssetRegistry.resolve(r.role, profileId, { entityType: r.entityType });
-        if (!res.missing) resolved++;
-        if (res.resolvedBy === 'placeholder') placeholders++;
+        // A GENERATED placeholder IS the resolution the registry promises ("a missing asset
+        // degrades to a placeholder instead of breaking the game or blocking a migration"), so it
+        // counts as resolved and is reported separately. Only a role that resolves to neither a
+        // file nor a placeholder is a failure. A project with no imported art (every mesh built
+        // in code) legitimately resolves all of its roles to placeholders.
+        if (res.resolvedBy === 'placeholder' || res.resolvedBy === 'unresolved') {
+            placeholders++;
+            if (!res.placeholder) unresolved.push(r.role);
+        } else resolved++;
     }
     out.checks.assets = { roles: roles.length, resolved, placeholders };
     if (!roles.length) fail('the registry has no roles');
-    if (resolved !== roles.length) fail(resolved + '/' + roles.length + ' roles resolve');
+    for (const role of unresolved) fail('role ' + role + ' resolves to nothing (no file, no placeholder)');
     // the camera matches the profile's projection and one of its modes
     const cam = kit.Camera.params();
     const prof = kit.RenderProfile.info(profileId);
@@ -75,7 +85,10 @@ function checkProfile(kit, profileId) {
     const rep = kit.VisualEntity.sync(kit.GameModel.entities, cfg, {});
     out.checks.bindings = rep.bindings;
     out.checks.byType = rep.byType;
-    if (!rep.bindings) fail('nothing is presented');
+    // A project may present its own entities (representation 'none': a view module on the engine
+    // layer). Those count as presented — the pipeline must not draw a second copy of them.
+    out.checks.selfPresented = rep.selfPresented;
+    if (out.checks.entities && !rep.bindings && !rep.selfPresented) fail('nothing is presented');
     const allowed = prof.entityRepresentations.allowed;
     for (const b of kit.VisualEntity.bindings()) {
         if (!allowed.includes(b.type)) fail('binding type ' + b.type + ' not allowed by ' + profileId);
@@ -140,16 +153,18 @@ function checkMigration(kit, from, to) {
 const kit = bootPipeline({ files: scanAssets(ROOT), quiet: true });
 kit.PlayArcRuntime.start({ variants: collectPresentation(ROOT), apply: false });
 const baseHash = kit.GameModel.gameplayHash();
+const baseContract = kit.GameModel.contractHash();
 const baseSave = kit.Save.schemaHash();
 const baseIds = kit.GameModel.entities.map(e => e.id).join(',');
 
 say('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— profile / migration matrix (headless)' + C.r);
-say('  ' + C.dim + 'project ' + kit.Variant.project.id + ' · gameplay hash ' + baseHash + ' · save schema ' + baseSave + C.r);
+say('  ' + C.dim + 'project ' + kit.Variant.project.id + ' · contract ' + baseContract + ' · gameplay hash ' + baseHash + ' · save schema ' + baseSave + C.r);
 
 const profiles = LADDER.map(p => checkProfile(kit, p));
 for (const p of profiles) {
     say('  ' + (p.ok ? C.grn + 'ok  ' + C.r : C.red + 'FAIL' + C.r) + ' profile ' + C.b + p.profile.padEnd(12) + C.r +
         C.dim + 'entities ' + p.checks.entities + ' · bindings ' + p.checks.bindings + ' ' + JSON.stringify(p.checks.byType || {}) +
+        (p.checks.selfPresented ? ' · self-presented ' + p.checks.selfPresented : '') +
         ' · camera ' + (p.checks.camera ? p.checks.camera.projection + '/' + p.checks.camera.mode : '-') +
         ' · assets ' + (p.checks.assets ? p.checks.assets.resolved + '/' + p.checks.assets.roles : '-') +
         ' · save ' + (p.checks.save || 0) + C.r);
@@ -178,9 +193,11 @@ for (const [from, to] of [['2d', 'full3d'], ['full3d', '2d'], ['2.5d', 'isometri
 const shared = {
     idsSame: kit.GameModel.entities.map(e => e.id).join(',') === baseIds,
     hashSame: kit.GameModel.gameplayHash() === baseHash,
+    contractSame: kit.GameModel.contractHash() === baseContract,
     saveSame: kit.Save.schemaHash() === baseSave
 };
 say('\n  shared after ' + migrations.length + ' conversions: ids ' + (shared.idsSame ? C.grn + 'same' : C.red + 'CHANGED') + C.r +
+    C.dim + ', contract ' + (shared.contractSame ? C.grn + 'same' : C.red + 'CHANGED') + C.r +
     C.dim + ', gameplay ' + (shared.hashSame ? C.grn + 'same' : C.red + 'CHANGED') + C.r +
     C.dim + ', save schema ' + (shared.saveSame ? C.grn + 'same' : C.red + 'CHANGED') + C.r);
 
@@ -189,8 +206,8 @@ const validation = kit.Variant.validateAll({});
 say('  variants: ' + validation.count + ' validated, ' + (validation.ok ? C.grn + 'all ok' + C.r : C.red + validation.variants.filter(v => !v.ok).length + ' failed' + C.r));
 for (const v of validation.variants) for (const p of v.problems || []) say('      ' + C.red + v.variant + ': ' + p + C.r);
 
-const ok = profiles.every(p => p.ok) && migrations.every(m => m.ok) && shared.idsSame && shared.hashSame && shared.saveSame && validation.ok;
-const report = { ok, profiles, migrations, shared, validation, gameplayHash: baseHash, saveSchemaHash: baseSave };
+const ok = profiles.every(p => p.ok) && migrations.every(m => m.ok) && shared.idsSame && shared.contractSame && shared.hashSame && shared.saveSame && validation.ok;
+const report = { ok, profiles, migrations, shared, validation, contractHash: baseContract, gameplayHash: baseHash, saveSchemaHash: baseSave };
 if (JSON_OUT) { fs.mkdirSync(path.dirname(path.resolve(JSON_OUT)), { recursive: true }); fs.writeFileSync(JSON_OUT, JSON.stringify(report, null, 2) + '\n'); say('  ' + C.dim + 'report: ' + path.resolve(JSON_OUT) + C.r); }
 else if (AS_JSON) console.log(JSON.stringify(report, null, 2));
 say('  ' + (ok ? C.grn + C.b + 'Matrix passed.' + C.r : C.red + C.b + 'Matrix FAILED.' + C.r) + '\n');

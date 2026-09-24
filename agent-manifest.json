@@ -243,6 +243,7 @@
             "GameModel.find(filter)",
             "GameModel.system(id, fn, phase)",
             "GameModel.run(dt)",
+            "GameModel.contractHash()",
             "GameModel.gameplayHash()",
             "GameModel.inspect()"
         ],

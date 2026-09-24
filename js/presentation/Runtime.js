@@ -13,10 +13,12 @@
 //     /?project=robot-quest&variant=robot-2d
 //     /?project=robot-quest&variant=robot-full3d
 //
-// The runtime context ({ project, variant, profile, instance, gameplayHash, saveSchemaHash })
-// is what an agent, the editor and the CLI read to know what a given instance presents.
-// `gameplayHash` and `saveSchemaHash` are identical in every instance of a project — that is
-// the machine-checkable proof that the variants share one game.
+// The runtime context ({ project, variant, profile, instance, contractHash, gameplayHash,
+// saveSchemaHash }) is what an agent, the editor and the CLI read to know what a given instance
+// presents. `contractHash` and `saveSchemaHash` are identical in every instance of a project —
+// that is the machine-checkable proof that the variants share one game. `gameplayHash` covers the
+// LIVE model state (positions, logic, progression): it is a migration's preservation proof inside
+// one session, and it legitimately differs between two tabs that have been playing.
 
 /** @satisfies {Record<string, any>} */
 const PlayArcRuntime = {
@@ -80,6 +82,9 @@ const PlayArcRuntime = {
             instance: o.instance || PlayArcRuntime.instanceId(),
             startedAt: new Date().toISOString(),
             gameplayHash: GameModel.gameplayHash(),
+            // The cross-instance invariant (see GameModel.contractDigest): gameplayHash covers
+            // LIVE model state, so two tabs of one project diverge as soon as the game plays.
+            contractHash: GameModel.contractHash ? GameModel.contractHash() : null,
             saveSchemaHash: Save.schemaHash(),
             headless: typeof RenderProfile !== 'undefined' ? RenderProfile.isHeadless() : true
         };
@@ -107,6 +112,7 @@ const PlayArcRuntime = {
             PlayArcRuntime._context.profile = Variant.profileOf(variantId);
             PlayArcRuntime._context.url = PlayArcRuntime.urlFor(PlayArcRuntime._context.project, variantId);
             PlayArcRuntime._context.gameplayHash = GameModel.gameplayHash();
+            if (GameModel.contractHash) PlayArcRuntime._context.contractHash = GameModel.contractHash();
         }
         return { ok: !(report && report.ok === false), context: PlayArcRuntime.context(), report: report };
     },
@@ -216,6 +222,7 @@ const PlayArcRuntime = {
             headless: PlayArcRuntime.isHeadless(),
             shared: {
                 gameplayHash: GameModel.booted() ? GameModel.gameplayHash() : null,
+                contractHash: (GameModel.booted() && GameModel.contractHash) ? GameModel.contractHash() : null,
                 saveSchemaHash: GameModel.booted() ? Save.schemaHash() : null,
                 entityIds: GameModel.booted() ? GameModel.entities.map(e => e.id) : []
             }

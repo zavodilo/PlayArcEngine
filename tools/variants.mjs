@@ -206,7 +206,7 @@ const commands = {
         for (const r of rows) {
             say('   ' + (r.default ? C.grn + '*' + C.r : ' ') + ' ' + C.cyn + r.id.padEnd(34) + C.r + r.profile.padEnd(13) + (r.enabled ? '' : C.dim + ' (disabled)' + C.r) + C.dim + ' ' + r.name + C.r);
         }
-        say(C.dim + '   shared: ' + kit.GameModel.entities.length + ' entities, gameplay hash ' + kit.GameModel.gameplayHash() + ', save schema ' + kit.Save.schemaHash() + C.r);
+        say(C.dim + '   shared: ' + kit.GameModel.entities.length + ' entities, contract ' + kit.GameModel.contractHash() + ', gameplay ' + kit.GameModel.gameplayHash() + ', save schema ' + kit.Save.schemaHash() + C.r);
     },
 
     inspect() {
@@ -318,7 +318,7 @@ const commands = {
         say(C.b + '  runtime ' + variantId + C.r + C.dim + ' (headless: no engine attached)' + C.r);
         say('   project   ' + out.context.project);
         say('   profile   ' + C.cyn + out.context.profile + C.r + '   instance ' + out.context.instance);
-        say('   gameplay  ' + out.context.gameplayHash + '   save schema ' + out.context.saveSchemaHash);
+        say('   contract  ' + (out.context.contractHash || '-') + '   gameplay ' + out.context.gameplayHash + '   save schema ' + out.context.saveSchemaHash);
         say('   camera    ' + out.presentation.camera.mode + ' / ' + out.presentation.camera.params.projection +
             ' az ' + out.presentation.camera.params.azimuthDeg + '° el ' + out.presentation.camera.params.elevationDeg + '°');
         say('   lighting  ' + (out.presentation.lighting.preset || '-'));

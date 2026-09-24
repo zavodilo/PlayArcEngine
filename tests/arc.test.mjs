@@ -70,3 +70,20 @@ test('package.json#files carries everything a scaffolded game needs', () => {
         assert.ok(fs.existsSync(path.join(ROOT, rel)), rel + ' is packed but does not exist');
     }
 });
+
+// A gate that runs nothing and prints "all passed" is worse than no gate: `check --profiles` and
+// `check --variants` used to match no step at all. Every known flag must run something, and a
+// typo must fail instead of quietly falling back to the default profile.
+test('check.mjs: каждый флаг запускает проверку, неизвестный флаг — ошибка', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'tools/check.mjs'), 'utf8');
+    const knownLine = /const KNOWN = \[([^\]]+)\]/.exec(src);
+    assert.ok(knownLine, 'check.mjs declares KNOWN flags');
+    const known = knownLine[1].split(',').map(x => x.trim().replace(/['"]/g, '')).filter(Boolean);
+    const stepped = [...src.matchAll(/\{ flag: '(--[a-z]+)'/g)].map(m => m[1]);
+    for (const f of known) {
+        assert.ok(stepped.includes(f), 'check.mjs: ' + f + ' не запускает ни одного шага — молчаливый «успех»');
+    }
+    const bogus = spawnSync(process.execPath, ['tools/check.mjs', '--no-such-flag'], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(bogus.status, 1, 'неизвестный флаг должен падать');
+    assert.match(bogus.stderr, /неизвестный флаг/);
+});

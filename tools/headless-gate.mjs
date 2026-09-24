@@ -156,6 +156,11 @@ const variantSmoke = (page) => page.evaluate(() => {
         uiChildren: document.querySelectorAll('.arc-ui > *').length,
         uiSpace: UI.space,
         gameplayHash: GameModel.gameplayHash(),
+        // The cross-instance invariant: gameplayHash covers LIVE model state, so two tabs of one
+        // project diverge as soon as the game plays (a game mirrors its simulation into the model).
+        contractHash: GameModel.contractHash ? GameModel.contractHash() : null,
+        bootContractHash: (PlayArcRuntime.context() || {}).contractHash || null,
+        selfPresented: GameModel.entities.filter(e => e.visualRequest(RenderProfile.id()).type === 'none').length,
         saveSchemaHash: Save.schemaHash(),
         budget: RenderProfile.checkBudget(RenderProfile.id()),
         uniqueColors16: uniq.size,
@@ -223,13 +228,16 @@ try {
                 if (s.profile !== v.profile) problems.push('profile ' + s.profile + ' != variant profile ' + v.profile);
                 if (s.projection !== s.expectedProjection) problems.push('camera projection ' + s.projection + ' != ' + s.expectedProjection);
                 if (!s.entities) problems.push('no logical entities');
-                if (s.bindings < 1) problems.push('nothing is presented (' + s.bindings + ' visual bindings)');
+                // A project may present its own entities (representation 'none': a view module on
+                // the engine layer). Those count as presented — the pipeline must not double-draw.
+                if (s.bindings < 1 && s.selfPresented < 1) problems.push('nothing is presented (' + s.bindings + ' visual bindings, ' + s.selfPresented + ' self-presented)');
                 if (s.uniqueColors16 <= 4) problems.push('the frame looks blank (uniqueColors16 ' + s.uniqueColors16 + ')');
                 if (s.uiChildren < 2) problems.push('the HUD is missing (' + s.uiChildren + ' elements)');
                 if (bad.length) problems.push('console: ' + bad.slice(0, 2).join(' | '));
-                if (!shared) shared = { gameplayHash: s.gameplayHash, saveSchemaHash: s.saveSchemaHash, entityIds: s.entityIds };
+                const shareKey = s.contractHash || s.gameplayHash;
+                if (!shared) shared = { contractHash: shareKey, saveSchemaHash: s.saveSchemaHash, entityIds: s.entityIds };
                 else {
-                    if (shared.gameplayHash !== s.gameplayHash) problems.push('gameplay hash differs from ' + list[0].id + ' — the variants do not share one game');
+                    if (shared.contractHash !== shareKey) problems.push('game contract differs from ' + list[0].id + ' — the variants do not share one game');
                     if (shared.saveSchemaHash !== s.saveSchemaHash) problems.push('save schema differs — a save would not load in every variant');
                     if (JSON.stringify(shared.entityIds) !== JSON.stringify(s.entityIds)) problems.push('entity ids differ between variants');
                 }
@@ -241,6 +249,7 @@ try {
                 }
                 note('variant ' + v.id + ': ' + v.profile + ' ' + s.projection + '/' + s.cameraMode +
                     ' · entities ' + s.entities + ' · bindings ' + s.bindings + ' (' + JSON.stringify(s.byType) + ')' +
+                    (s.selfPresented ? ' · self-presented ' + s.selfPresented : '') +
                     ' · tiles ' + s.worldTiles + ' · sprites ' + s.sprites + ' · lighting ' + s.lighting +
                     ' · colors ' + s.uniqueColors16 + (problems.length ? ' · ' + C_RED + problems.length + ' problem(s)' + C_RESET : ' · ok'));
                 results.push({ id: v.id, profile: v.profile, ok: !problems.length, problems: problems, consoleErrors: bad, smoke: s });

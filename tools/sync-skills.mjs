@@ -174,7 +174,7 @@ expected.set('agent-manifest.json', JSON.stringify({
         ui: ['UI.get(id)', 'UI.query()', 'UI.patch(id, patch)', 'UI.add(def)', 'UI.remove(id)'],
         kit: ['Kit.state(key, value?)', 'Kit.onFrame(name, fn)', 'Kit.offFrame(name)', 'Kit.time()', 'Kit.dt()', 'Kit.fps()'],
         asset: ['Asset.preload(path)', 'Asset.list()', 'Asset.loaded(path)'],
-        gameModel: ['GameModel.boot(spec)', 'GameModel.entity(id)', 'GameModel.find(filter)', 'GameModel.system(id, fn, phase)', 'GameModel.run(dt)', 'GameModel.gameplayHash()', 'GameModel.inspect()'],
+        gameModel: ['GameModel.boot(spec)', 'GameModel.entity(id)', 'GameModel.find(filter)', 'GameModel.system(id, fn, phase)', 'GameModel.run(dt)', 'GameModel.contractHash()', 'GameModel.gameplayHash()', 'GameModel.inspect()'],
         world: ['World.map(spec)', 'world.blocked(x, z)', 'world.heightAt(x, z)', 'world.findPath(a, b)', 'world.kindAtWorld(x, z)', 'world.toSpec()'],
         input: ['Input.define(map)', 'Input.isDown(action)', 'Input.pressed(action)', 'Input.axis(action)', 'Input.on(action, fn)', 'Input.pointerWorld()'],
         animation: ['GameAnimation.play(state)', 'GameAnimation.play(entity, state)', 'GameAnimation.state(id)', 'GameAnimation.subject(id)', 'GameAnimation.system(profile)'],

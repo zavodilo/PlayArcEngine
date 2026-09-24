@@ -64,8 +64,9 @@ node tools/arc.mjs check --profiles # the headless profile/migration matrix
 ```
 
 Converting 2D → 3D is a *presentation migration*: entity ids, logical coordinates, rules, the
-world and the save schema are byte-identical afterwards (`gameplayHash` proves it), missing art
-degrades through fallbacks to generated placeholders, and the source variant always survives.
+world and the save schema are byte-identical afterwards (`gameplayHash` proves it for the session,
+`contractHash` across instances), missing art degrades through fallbacks to generated
+placeholders, and the source variant always survives.
 The editor's **Profile** tab previews any variant live and previews/applies migrations.
 Gameplay code never sees a renderer: `GameModel`, `Entity`, `World`, `Input`, `GameAnimation`,
 `GameAudio`, `Save`, `RenderProfile`, `Variant`, `Camera`, `Lighting` — never `pc.*`.

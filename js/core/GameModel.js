@@ -364,6 +364,54 @@ const GameModel = {
         return GameModel.hash(JSON.stringify(d));
     },
 
+    /**
+     * The game CONTRACT digest: what makes this project THIS game — and nothing that changes
+     * while it is played. gameplayDigest() deliberately includes live state (positions, logic,
+     * progression): that is what a migration must preserve inside one session. It is therefore
+     * the WRONG thing to compare across instances — a game that mirrors its simulation into the
+     * model (the normal case: js/Game.js follows js/Logic.js) has a different live hash in every
+     * tab and at every frame.
+     *
+     * contractHash() is the cross-instance invariant: five variants of one project, five tabs,
+     * five minutes apart, one contract. It covers the spec as authored: rules, systems, the world
+     * definition, entity identities (id/type/tags/scene/visual role — never their live state),
+     * scenes, asset roles, input actions, audio cue ids and the save schema.
+     */
+    contractDigest() {
+        const s = GameModel.spec;
+        if (!s) return null;
+        const ents = (s.entities || []).map(e => ({
+            id: e.id, type: e.type, tags: (e.tags || []).slice().sort(), scene: e.scene || null,
+            role: (e.visual && e.visual.role) || null,
+            representation: (e.visual && e.visual.representation) || null
+        })).sort((a, b) => (a.id < b.id ? -1 : 1));
+        const scenes = (s.scenes || []).map(x => ({ id: x.id, kind: x.kind || 'gameplay', entities: (x.entities || []).slice(), ui: (x.ui || []).slice() }))
+            .sort((a, b) => (a.id < b.id ? -1 : 1));
+        const rules = Object.keys(s.rules || {}).sort()
+            .map(id => [id, JSON.stringify((s.rules[id] && s.rules[id].params) || {})]);
+        return {
+            id: s.id,
+            specVersion: s.specVersion || 1,
+            rules: rules,
+            systems: (s.systems || []).map(x => x.id + ':' + (x.phase || 'logic')),
+            // the world AS AUTHORED: the live WorldMap may have tiles a system wrote mid-run
+            world: s.world || null,
+            entities: ents,
+            scenes: scenes,
+            roles: (s.assets || []).map(a => a.role).sort(),
+            input: (s.input && s.input.actions) ? Object.keys(s.input.actions).sort() : null,
+            audio: (s.audio && s.audio.cues) ? s.audio.cues.map(c => c.id).sort() : null,
+            saveSchema: Save.schema()
+        };
+    },
+
+    /** FNV-1a over the contract digest: stable across instances, variants and play. */
+    contractHash() {
+        const d = GameModel.contractDigest();
+        if (!d) return null;
+        return GameModel.hash(JSON.stringify(d));
+    },
+
     /** Deterministic 32-bit FNV-1a of a string, as 8 hex digits. */
     hash(str) {
         let h = 0x811c9dc5;
