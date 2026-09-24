@@ -1,8 +1,10 @@
 // Debug3D without 3D: the winding rule of the scene lint, the normal map verdict and the held
 // view pose. PlayCanvas is a stub — only the pure parts are called.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test } from 'node:test';
-import { loadScripts, stub } from './browser-scripts.mjs';
+import { loadScripts, stub, ROOT } from './browser-scripts.mjs';
 
 const page = loadScripts(['js/engine/Debug3D.js'], { pc: stub(), World3D: stub() });
 const Debug3D = page.get('Debug3D');
@@ -91,4 +93,15 @@ test('assert*: машиночитаемые исходы вместо исклю
     assert.equal(Debug3D.assertVisible('ok').code, 'visible');
     assert.equal(Debug3D.assertVisible('nope').code, 'no-object');
     assert.equal(Debug3D.capture().code, 'no-canvas');
+});
+
+// Debug3D.capture() read the engine off `window.World3D` — but the kit's namespaces are top-level
+// `const` of classic scripts: they live in the global LEXICAL scope, so window.World3D is undefined
+// in a real browser and capture() always answered "no-canvas" outside node. Found by the
+// Wanderburg port's verify/packdiff.mjs, which needs capture() for its A/B frames.
+test('capture() берёт World3D лексически, а не с window', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'js', 'engine', 'Debug3D.js'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+    assert.ok(!/window\s*\)?\s*\.World3D/.test(src), 'window.World3D в браузере undefined');
+    assert.match(src, /typeof World3D !== 'undefined'/);
 });
