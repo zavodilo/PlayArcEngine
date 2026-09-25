@@ -61,8 +61,11 @@ const Sprite2D = {
         mesh.setUvs(0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
         mesh.setIndices(new Uint16Array([0, 1, 2, 0, 2, 3]));
         mesh.update(pc.PRIMITIVE_TRIANGLES);
-        // A shared mesh is never destroyed per sprite (the kit's refCount trap): it dies with
-        // the view in dispose().
+        // A shared mesh is never destroyed per sprite (the kit's refCount trap): the cache
+        // holds its own permanent ref — MeshInstance.destroy releases one ref per sprite, so
+        // without ours the quad would die with the LAST sprite and poison the next create().
+        // It dies with the view in dispose(), which destroys the mesh explicitly.
+        mesh.incRefCount();
         return mesh;
     },
 
