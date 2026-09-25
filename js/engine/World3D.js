@@ -319,11 +319,16 @@ const World3D = {
         if (!e) {
             const mesh = this._inkEdgeMesh(view, mi.mesh, c);
             if (!mesh) return;
+            // The edge mesh is SHARED: instances of one GLB container share the source
+            // mesh, and _inkEdgeMesh caches the ribbon on it — count the ribbons so the
+            // mesh dies only with the last one (a destroyed-but-cached ribbon in the
+            // render queue crashes the renderer: 'impl' of undefined).
+            mesh._arcInkRefs = (mesh._arcInkRefs || 0) + 1;
             const line = new pc.MeshInstance(mesh, view.inkMaterial(c), mi.node);
             line.castShadow = false;
             line.receiveShadow = false;
             view.putInLayer(line, view.layerOf(mi));
-            e = { mi: line, group: group, mesh: mesh };
+            e = { mi: line, group: group, mesh: mesh, src: mi.mesh };
             rec.set(mi, e);
         }
         // Ribbon width in world px: the old Babylon edges read ~1 screen px per 25 units
@@ -338,8 +343,21 @@ const World3D = {
         const e = rec && rec.get(mi);
         if (!e) return;
         view.dropFromLayers(e.mi);
-        e.mesh.destroy();
         rec.delete(mi);
+        this._inkRelease(e);
+    },
+
+    // One ribbon less on the shared edge mesh: destroy it only with the last one and
+    // evict it from the source-mesh cache — a destroyed mesh left in _arcInkCache is
+    // handed to the next instance and crashes the renderer ('impl' of undefined).
+    _inkRelease(e) {
+        const mesh = e.mesh;
+        if (!mesh) return;
+        mesh._arcInkRefs = (mesh._arcInkRefs || 1) - 1;
+        if (mesh._arcInkRefs > 0) return;
+        const src = e.src;
+        if (src && src._arcInkCache && src._arcInkCache.mesh === mesh) delete src._arcInkCache;
+        try { mesh.destroy(); } catch (err) { /* already gone */ }
     },
 
     applyInk(view, c) {
@@ -348,7 +366,14 @@ const World3D = {
         const rec = view._inks;
         // Drop the lines of meshes that no longer want ink; re-width and recolor the rest.
         for (const [mi, e] of [...(rec || [])]) {
-            if (!mi.node || mi.node._destroyed) { rec.delete(mi); continue; }
+            if (!mi.node || mi.node._destroyed) {
+                // The source node died without removeObject: the ribbon shares its node,
+                // so drop it from the layers and release the edge mesh, not just the record.
+                rec.delete(mi);
+                view.dropFromLayers(e.mi);
+                this._inkRelease(e);
+                continue;
+            }
             this.inkMesh(view, mi, e.group, c);
         }
         // Pick up meshes registered while ink was off for their group.
@@ -364,7 +389,13 @@ const World3D = {
     // Adjacency is by WELDED positions (flat-shaded lowpoly keeps its corners separate);
     // an edge is inked when the face normals crease sharper than the angle constant.
     _inkEdgeMesh(view, mesh, c) {
-        if (mesh._arcInkCache && mesh._arcInkCache.angle === c.inkAngle) return mesh._arcInkCache.mesh;
+        const hit = mesh._arcInkCache;
+        if (hit && hit.angle === c.inkAngle) {
+            // A destroyed ribbon (Mesh.destroy nulls the vertexBuffer) must never be handed
+            // out again — rebuild instead. Instances of one GLB share this source mesh.
+            if (!hit.mesh || hit.mesh.vertexBuffer) return hit.mesh;
+            delete mesh._arcInkCache;
+        }
         const vb = mesh.vertexBuffer;
         if (!vb) return null;
         const fmt = vb.format;
@@ -1201,9 +1232,13 @@ class View3D {
         if (this.world.view === this) this.world.view = null;
         this._syncFns = [];
         for (const mi of this.allMeshInstances()) this.dropFromLayers(mi);
+        const inkMeshes = new Set();
         for (const rec of [...(this._inks || []).values()]) {
             for (const mi of [rec.mi]) this.dropFromLayers(mi);
+            if (rec.mesh) inkMeshes.add(rec.mesh);   // shared ribbons: die with the view
         }
+        for (const m of inkMeshes) { try { m.destroy(); } catch (e) { /* gone */ } }
+        if (this._inks) this._inks.clear();
         for (const hull of [...(this._outlines || []).values()]) this.dropFromLayers(hull);
         for (const asset of (this._assets || [])) {
             try { asset.unload(); this.app.assets.remove(asset); } catch (e) { /* ok */ }

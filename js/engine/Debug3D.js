@@ -481,6 +481,9 @@ const Debug3D = {
         out.setPositions(P);
         out.setIndices(idx);
         out.update(pc.PRIMITIVE_LINES);
+        // The cache is the permanent owner: instance destroy releases refs, and without our
+        // own the wire mesh would die with the last wired instance while staying cached.
+        out.incRefCount();
         this._wireCache.set(mesh, out);
         return out;
     }
