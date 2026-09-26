@@ -17,8 +17,17 @@
 /** @satisfies {Record<string, any>} */
 const Gltf3D = {
     UNITS: 100,              // glTF meters -> world px (1 cm = 1 px, like FBX)
-    _cache: new Map(),       // view uid + url -> Promise<model>: the file is loaded once per view
+    _cache: new Map(),       // view uid + url -> { p, model }: the file is loaded once per view
     _clips: new WeakMap(),   // model root -> Clips3D
+
+    // A cached model is alive while its container asset still owns the resource: disposing
+    // the last instance of a shared container can drop its refcount to zero and the registry
+    // unloads it (meshes destroyed) — building from the stale cache then feeds destroyed
+    // meshes to the render queue (the western→forest 'impl' crash). Stale entries reload.
+    _alive(model) {
+        const a = model && model.asset;
+        return !!a && !!model.container && a.resource === model.container && a.loaded !== false;
+    },
 
     is(url) {
         return /\.(glb|gltf)(\?|$)/i.test(String(url));
@@ -28,9 +37,10 @@ const Gltf3D = {
     // in the registry; build() instantiates it. It dies with the view.
     load(url, view) {
         const key = view.uid + '|' + url;
-        let p = this._cache.get(key);
-        if (!p) {
-            p = new Promise((resolve, reject) => {
+        let entry = this._cache.get(key);
+        if (entry && entry.model && !Gltf3D._alive(entry.model)) { this._cache.delete(key); entry = null; }
+        if (!entry) {
+            const p = new Promise((resolve, reject) => {
                 const app = view.world.app;
                 const asset = new pc.Asset(url, 'container', { url: url });
                 (view._assets || (view._assets = [])).push(asset);
@@ -47,10 +57,14 @@ const Gltf3D = {
                 app.assets.add(asset);
                 app.assets.load(asset);
             });
-            this._cache.set(key, p);
-            p.catch(() => this._cache.delete(key));   // errors are not cached: the file may be added later
+            entry = { p: p, model: null };
+            this._cache.set(key, entry);
+            // One then with both handlers: a bare p.then() would leave a derived promise
+            // carrying an unhandled rejection. Errors are not cached: the file may be added later.
+            p.then((m) => { entry.model = m; },
+                () => { if (this._cache.get(key) === entry) this._cache.delete(key); });
         }
-        return p;
+        return entry.p;
     },
 
     // Model -> root entity without geometry; each call gets its own entities, skeleton, clips
