@@ -23,6 +23,11 @@ const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const envPort = /^\d+$/.test(process.env.PORT || '') ? Number(process.env.PORT) : null;
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : (envPort ?? 8080);
 const NO_OPEN = process.argv.includes('--no-open');
+// Bind address: --host=ADDR > the HOST environment variable > 127.0.0.1 (loopback-only by
+// default; pass --host=0.0.0.0 in containers/CI where the browser is not on this machine).
+const argHost = (process.argv.find(a => a.startsWith('--host=')) || '').slice('--host='.length) || null;
+const envHost = /^[\w.:\[\]]+$/.test(process.env.HOST || '') ? process.env.HOST : null;
+const HOST = argHost || envHost || '127.0.0.1';
 // Which visual variant of the project this server presents: the query goes into the URL that
 // is printed and opened, and PlayArcRuntime reads it in the page (?project=…&variant=…).
 const argVariant = (process.argv.find(a => a.startsWith('--variant=')) || '').slice('--variant='.length) || null;
@@ -159,11 +164,13 @@ function listen(port, attempt = 0) {
     console.error(`${C.red}Не удалось поднять сервер: ${err.message}${C.r}`);
     process.exit(1);
   });
-  server.listen(port, '127.0.0.1', async () => {
-    const addr = `http://localhost:${port}/${QUERY}`;
+  server.listen(port, HOST, async () => {
+    const shownHost = (HOST === '0.0.0.0' || HOST === '::') ? 'localhost' : HOST;
+    const addr = `http://${shownHost}:${port}/${QUERY}`;
     console.log(`\n${C.cyn}${C.b}  ArcEngine${C.r} ${C.dim}— dev server${C.r}`);
     console.log(`${C.dim}  ${'-'.repeat(46)}${C.r}`);
     console.log(`  ${C.grn}${C.b}${addr}${C.r}`);
+    if (HOST !== '127.0.0.1') console.log(`  ${C.dim}bind: ${HOST}${C.r}`);
     if (argVariant) console.log(`  ${C.dim}вариант: ${argVariant}${C.r}`);
     console.log(`${C.dim}  корень: ${ROOT}${C.r}`);
     console.log(`${C.dim}  кэш: no-store — правку .js видно после F5, без Ctrl+Shift+R${C.r}`);
