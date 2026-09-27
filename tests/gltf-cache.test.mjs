@@ -25,6 +25,7 @@ function harness() {
         added: [],
         add(a) { this.added.push(a); },
         load(a) { a.resource = { animations: [] }; a.loaded = true; a._fire('load'); },
+        on() { /* диагностика внешних текстур (Gltf3D._watchSideTextures) в захвате не участвует */ },
     };
     const view = { uid: 'v-test', _assets: [], world: { app: { assets: registry } } };
     return { Gltf3D, registry, view };

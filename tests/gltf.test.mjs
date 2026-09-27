@@ -101,3 +101,38 @@ test('клипы: stop возвращает позу покоя', () => {
     assert.equal(layer.resets, 1);
     assert.equal(clips.current, '');
 });
+
+// --- Side textures: a container that references textures as separate files ---------
+// A bundled game 404s them and the model goes white with no explanation; the loader
+// must name the culprit once per view and point at the fix.
+function fakeRegistry() {
+    const handlers = [];
+    return {
+        on(ev, fn) { if (ev === 'error') handlers.push(fn); },
+        emit(err, asset) { for (const fn of handlers) fn(err, asset); }
+    };
+}
+
+test('внешние текстуры: ошибка текстуры рядом с моделью называет модель и лечится', () => {
+    const page = loadScripts(['js/Constants.js', 'js/engine/Gltf3D.js'], { pc: stub(), World3D: stub() });
+    const Gltf3D = page.get('Gltf3D');
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (m) => warns.push(String(m));
+    try {
+        const view = {};
+        const app = { assets: fakeRegistry() };
+        const url = 'assets/models/props/ken_sedan.glb';
+        Gltf3D._watchSideTextures(view, app, url);
+        Gltf3D._watchSideTextures(view, app, url);      // повторно: один слушатель на вид
+        app.assets.emit(new Error('404'), { type: 'texture', file: { url: 'assets/models/props/Textures/colormap.png' } });
+        app.assets.emit(new Error('404'), { type: 'texture', file: { url: 'assets/models/props/Textures/colormap.png' } });
+        app.assets.emit(new Error('404'), { type: 'texture', file: { url: 'assets/other/Textures/x.png' } });  // чужая папка — молчим
+        app.assets.emit(new Error('404'), { type: 'container', file: { url: 'assets/models/props/ken_sedan.glb' } });
+    } finally {
+        console.warn = origWarn;
+    }
+    assert.equal(warns.length, 1, 'одно предупреждение на модель и файл');
+    assert.ok(warns[0].indexOf('ken_sedan.glb') >= 0, 'названа модель: ' + warns[0]);
+    assert.ok(warns[0].indexOf('colormap.png') >= 0, 'назван файл текстуры: ' + warns[0]);
+});
