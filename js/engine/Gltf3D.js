@@ -33,6 +33,27 @@ const Gltf3D = {
         return /\.(glb|gltf)(\?|$)/i.test(String(url));
     },
 
+    // A glTF container may reference its textures as SIDE files (images[].uri =
+    // "Textures/colormap.png"): the registry then fetches them next to the model, a
+    // bundled game 404s them, and the model silently renders white — the worst kind
+    // of asset bug, because nothing in the console points at the model. Listen for
+    // texture-asset errors once per view and name the culprit with the fix.
+    _watchSideTextures(view, app, url) {
+        const seen = view._sideTexWarn || (view._sideTexWarn = new Set());
+        if (seen.has(url)) return;
+        seen.add(url);
+        const base = String(url).replace(/[^/]*$/, '');
+        app.assets.on('error', (err, a) => {
+            const u = a && a.file && a.file.url;
+            if (!u || a.type !== 'texture' || seen.has(u)) return;
+            seen.add(u);
+            if (base && String(u).indexOf(base) !== 0) return;   // only files beside the model
+            console.warn('Gltf3D: ' + url + ' тянет текстуру отдельным файлом ' + u +
+                ' — в сборку она не попадёт, модель останется белой. ' +
+                'Вшейте её в контейнер (glb-pack / tools/glb-embed-texture.mjs).');
+        });
+    },
+
     // url -> Promise<{ gltf: true, container, clips: [names] }>. The container asset stays
     // in the registry; build() instantiates it. It dies with the view.
     load(url, view) {
@@ -54,6 +75,7 @@ const Gltf3D = {
                     });
                 });
                 asset.once('error', (err) => reject(new Error((err && err.message) || ('load failed: ' + url))));
+                Gltf3D._watchSideTextures(view, app, url);
                 app.assets.add(asset);
                 app.assets.load(asset);
             });
