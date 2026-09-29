@@ -1,0 +1,31 @@
+# ArcEngine — gate.
+#
+# Зачем появился: у набора есть полный гейт (`tools/arc.mjs check` — типы, тесты, drift
+# скиллов/манифеста/профилей/вариантов и цепочка лицензий), но до этого его не запускало
+# НИЧЕГО, кроме человека, который вспомнил. Любой drift-гейт, который никто не гоняет,
+# равен отсутствию гейта: расхождение уезжает в main молча.
+#
+# Намеренно только дефолтный прогон (типы + тесты + drift): он не требует браузера и
+# проходит за секунды. Headless-гейты (`--render`, `--visual`, `--variants`) нуждаются в
+# puppeteer и swiftshader — их стоит добавлять отдельным job'ом после проверки на живом
+# прогоне, а не вслепую: красный CI хуже отсутствующего.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Дефолтный прогон check.mjs: --types (npx поднимает typescript сам), --tests, --skills.
+      - name: check (types, tests, drift)
+        run: node tools/arc.mjs check
