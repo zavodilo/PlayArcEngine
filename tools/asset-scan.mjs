@@ -29,7 +29,7 @@ export const CODE_FILES = [
   'js/engine/Debug3D.js', 'js/engine/Sprite2D.js', 'js/engine/Camera3D.js', 'js/engine/Lighting3D.js',
   'js/engine/Visual3D.js',
   'js/core/SceneSchema.js', 'js/presentation/RenderProfiles.js', 'js/presentation/Variants.js',
-  'js/core/Coords.js', 'js/core/Entity.js', 'js/core/World.js', 'js/core/GameModel.js',
+  'js/core/Coords.js', 'js/core/Entity.js', 'js/core/World.js', 'js/core/Physics.js', 'js/core/GameModel.js',
   'js/core/Input.js', 'js/core/GameAudio.js', 'js/core/Save.js',
   'js/presentation/AssetRegistry.js', 'js/presentation/Variant.js', 'js/presentation/RenderProfile.js',
   'js/presentation/Camera.js', 'js/presentation/Lighting.js', 'js/presentation/Animation.js',
