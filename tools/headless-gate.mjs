@@ -4,7 +4,8 @@
 //  node tools/headless-gate.mjs --render     boot game + editor, console/pageerror gate
 //  node tools/headless-gate.mjs --visual     + pixel/DOM smoke (ground visible, HUD alive,
 //                                            editor panes present), fixed seed/viewport
-//  node tools/headless-gate.mjs --all        both
+//  node tools/headless-gate.mjs --performance budget gate: Debug3D.stats() vs tools/perf-budget.json
+//  node tools/headless-gate.mjs --all        everything above
 //
 //  Dev-only: needs puppeteer in node_modules or on NODE_PATH (the kit runtime stays
 //  zero-npm; this gate is tooling). Without it the gate exits with code 2 and a hint —
@@ -25,7 +26,8 @@ const JSON_OUT = jsonArg ? jsonArg.slice(7) : null;
 const WANT_RENDER = args.includes('--render') || args.includes('--all');
 const WANT_VISUAL = args.includes('--visual') || args.includes('--all');
 const WANT_VARIANTS = args.includes('--variants') || args.includes('--all');
-if (!WANT_RENDER && !WANT_VISUAL && !WANT_VARIANTS) { console.error('headless-gate: pass --render, --visual, --variants or --all'); process.exit(1); }
+const WANT_PERF = args.includes('--performance') || args.includes('--all');
+if (!WANT_RENDER && !WANT_VISUAL && !WANT_VARIANTS && !WANT_PERF) { console.error('headless-gate: pass --render, --visual, --variants, --performance or --all'); process.exit(1); }
 // The screenshots land next to the report: create that directory up front, or the first
 // page.screenshot() dies with ENOENT long before the report itself is written.
 if (jsonArg) {
@@ -53,7 +55,7 @@ const note = (m) => console.log('  ' + m);
 const C_RED = '\x1b[31m', C_RESET = '\x1b[0m';
 const report = {
     ok: true, gate: 'headless', viewport: VIEWPORT, seed: SEED,
-    checks: { render: WANT_RENDER, visual: WANT_VISUAL, variants: WANT_VARIANTS },
+    checks: { render: WANT_RENDER, visual: WANT_VISUAL, variants: WANT_VARIANTS, performance: WANT_PERF },
     game: null, editor: null, variants: null, screenshots: [], failures: []
 };
 
@@ -192,6 +194,22 @@ try {
         const bad = errors.filter(e => !/glReadPixels/.test(e));
         if (WANT_RENDER && bad.length) failures.push('game console: ' + bad.slice(0, 3).join(' | '));
         note('game: ' + (bad.length ? 'ERRORS ' + bad.length : 'console clean'));
+        // --- performance budget (phase D): the measured cost of the game frame ----------
+        if (WANT_PERF) {
+            const fs0 = await import('node:fs');
+            const budget = JSON.parse(fs0.readFileSync(path.join(ROOT, 'tools', 'perf-budget.json'), 'utf8'));
+            const perf = await page.evaluate((b) => {
+                for (let i = 0; i < 10; i++) {
+                    if (typeof World3D !== 'undefined' && World3D.renderFrame) World3D.renderFrame();
+                }
+                const stats = (typeof Debug3D !== 'undefined' && Debug3D.stats) ? Debug3D.stats(null, { frame: true }) : null;
+                return { stats, breaches: Debug3D.budgetBreaches(stats, b) };
+            }, budget);
+            if (!perf.stats) failures.push('perf: Debug3D.stats() вернул пусто');
+            note('performance: ' + JSON.stringify(perf.stats) + ' breaches=' + JSON.stringify(perf.breaches));
+            for (const br of perf.breaches) failures.push('perf: ' + br);
+            report.performance = { stats: perf.stats, budget, breaches: perf.breaches };
+        }
         if (JSON_OUT) {
             const shot = path.resolve(path.dirname(JSON_OUT), 'gate-game.png');
             await page.screenshot({ path: shot });

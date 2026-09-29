@@ -97,10 +97,10 @@ PR #6–#8. Статусы пунктов ревью:
 | 8 (visual assertions: assertVisible/assertInFrame/assertPosition/capture) | PR #9 (`Debug3D.assert*`, `capture()`) |
 | 17 (agent-manifest.json) | PR #6 |
 | 18 (cross-platform CLI) | PR #8 (`tools/arc.mjs`, `.bat`/`.sh`) |
-| 10 (map/render coordinates) | частично: `World3D.mirror/unmirror` + запрет ручного зеркалирования в агентском коде (apigate); публичные `mapToRender/renderToMap` — фаза D |
+| 10 (map/render coordinates) | **сделано**: `World3D.mapToRender/renderToMap` (алиасы над `Coords.toEngine(toMap)`) + scope-гейт `tests/coords-mirror.test.mjs` — зеркало выводится только в `Coords.js`/`World3D.js`, ручное `-x` в игре валят тесты (apigate тоже запрещает) |
 | 19 (security editor server) | PR #9: аудит + hardening (dot-paths 403, 400 bad JSON, 413 везде, drain без обрыва соединения) + `tests/editor-security.test.mjs` |
 | 20 (операционный журнал) | в main/PR #7: `Scene.journal()` |
-| 1, 9, 11, 12, 13, 14, 22, 23, 24 (split World3D, editor-as-client, FBX→GLB, ECS, physics, input, perf budget, license scanner) | фазы D/E ниже |
+| 1, 9, 11, 12, 13, 14, 22, 23, 24 (split World3D, editor-as-client, FBX→GLB, ECS, physics, input, perf budget, license scanner) | фазы D/E ниже; perf budget (23) — **сделано**, см. «Фаза D» |
 
 Порядок ревью («semantic до упаковки») принят ретроспективно как принцип: упаковка (A/C)
 ушла первой только потому, что semantic-база (B) была следом; все будущие фазы идут в
@@ -126,10 +126,16 @@ PR #6–#8. Статусы пунктов ревью:
     Файл внесён в `CODE_FILES`, `PIPELINE` и `AGENT_FACING`, поэтому его покрывают и гейт
     совпадения списков, и запрет `pc.*` в агентском коде.
   * `World3D.mapToRender/renderToMap` как публичный API + тест, что engine-слой — единственное
-    место с зеркалированием.
+    место с зеркалированием. — **сделано**: `mapToRender(m)`→`[px,py,pz]`, `renderToMap(px,py,pz)`→`{x,y,h}` (алиасы
+    над `Coords`, тот же ответ по построению); `tests/coords-mirror.test.mjs` (консистентность + scope-гейт).
   * `Debug3D.stats()` машинно: fps, frame time, draw calls, triangles, materials, entities,
     textures; `node tools/check.mjs --performance` с budget-файлом
-    (`{ maxDrawCalls, maxTextureMB, maxTriangles }`) — агент видит цену своих 300 деревьев.
+(`{ maxDrawCalls, maxTextureMB, maxTriangles }`) — агент видит цену своих 300 деревьев. — **сделано**:
+    `Debug3D.stats(view?, {frame?})` (бюджетные строки drawCalls/textureMB + triangles из цензи; fps/frameMs
+    только репортятся — software GL), `Debug3D.budgetBreaches(stats, budget)` (чистый вердикт «drawCalls N > M»),
+    `tools/perf-budget.json` (калиброван по замеру сэмпла: 235 draws/кадр, 163390 triangles, 5.4 MB → лимиты
+    700/400000/64, ~1.5x), гейт `check.mjs --performance` (в `--all`, JSON-отчёт `performance`); юниты
+    `tests/debug3d.test.mjs`, каноны `claude/skills/{world3d,verify}`.
   * ✅ `tools/notices.mjs`: сканер цепочки лицензий → генерация `THIRD_PARTY_NOTICES.md`;
     проверка в `check.mjs` (сделано 2026-09-28 @arena-playtest). Канон — `NOTICE`; сканер
     обходит вендоримые корни `libs/` и `claude/vendor/`, требует, чтобы каждый файл был покрыт

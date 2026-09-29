@@ -1,0 +1,6 @@
+{
+  "//": "Phase D perf budget (check.mjs --performance / headless-gate --performance). Calibrated on the SAMPLE PROJECT measured frame (drawCalls per frame after warmup, resident scene triangles, texture census) with ~1.5x headroom; each game sets its own numbers here. Frame times are reported by Debug3D.stats() but NOT budgeted: software-GL headless timings measure the rasterizer, not the scene.",
+  "maxDrawCalls": 700,
+  "maxTriangles": 400000,
+  "maxTextureMB": 64
+}

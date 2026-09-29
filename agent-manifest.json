@@ -164,7 +164,12 @@
             "x": "horizontal",
             "y": "vertical / height",
             "z": "depth / forward",
-            "note": "2D is the y = 0 case of the same space"
+            "note": "2D is the y = 0 case of the same space",
+            "named": [
+                "World3D.mapToRender(m) -> [px, py, pz]",
+                "World3D.renderToMap(px, py, pz) -> {x, y, h}"
+            ],
+            "rule": "the mirror is derived only in Coords.js and World3D.js (tests/coords-mirror.test.mjs enforces)"
         },
         "skills": {
             "orchestration": "render-profile",
@@ -318,6 +323,17 @@
             "PlayArcRuntime.context()",
             "PlayArcRuntime.inspect()"
         ],
+        "debug3d": [
+            "Debug3D.stats(view?, {frame?})",
+            "Debug3D.budgetBreaches(stats, budget)",
+            "Debug3D.lint(opts?)",
+            "Debug3D.bench(opts?)",
+            "Debug3D.benchToggle(mesh|toggles)",
+            "Debug3D.hold(pose)",
+            "Debug3D.release()",
+            "Debug3D.frames(n)",
+            "Debug3D.setMode(mode)"
+        ],
         "diagnostics": [
             "PlayArcDiagnostics.snapshot(app?)",
             "PlayArcDiagnostics.census(app?)",
@@ -336,6 +352,7 @@
         "sceneManifest": "node tools/manifest.mjs --check",
         "render": "node tools/headless-gate.mjs --render",
         "visual": "node tools/headless-gate.mjs --visual",
+        "performance": "node tools/headless-gate.mjs --performance (budget: tools/perf-budget.json)",
         "serve": {
             "game": "node tools/dev-server.mjs",
             "editor": "node _utils/editor/server.mjs"
