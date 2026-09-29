@@ -116,8 +116,13 @@ PR #6–#8. Статусы пунктов ревью:
   * `Debug3D.stats()` машинно: fps, frame time, draw calls, triangles, materials, entities,
     textures; `node tools/check.mjs --performance` с budget-файлом
     (`{ maxDrawCalls, maxTextureMB, maxTriangles }`) — агент видит цену своих 300 деревьев.
-  * `tools/notices.mjs`: сканер цепочки лицензий (runtime + vendor + tools) → генерация
-    `THIRD_PARTY_NOTICES.md`; проверка в `check.mjs`.
+  * ✅ `tools/notices.mjs`: сканер цепочки лицензий → генерация `THIRD_PARTY_NOTICES.md`;
+    проверка в `check.mjs` (сделано 2026-09-28 @arena-playtest). Канон — `NOTICE`; сканер
+    обходит вендоримые корни `libs/` и `claude/vendor/`, требует, чтобы каждый файл был покрыт
+    объявленным путём (точным или каталогом — `claude/vendor/playcanvas/` накрывает поддерево),
+    проверяет существование лицензионных файлов и свежесть сводки. Шаг `цепочка лицензий (drift)`
+    живёт во флаге `--skills`, то есть в дефолтном прогоне `check.mjs`. Первая же находка
+    сканера: `libs/simplex-noise.d.ts` лежал в репозитории, но в `NOTICE` объявлен не был.
 
 ### Фаза E — архитектурная глубина
   * Разделение `World3D` на Renderer / Scene / Camera / Lighting / Picking + RenderStyle
