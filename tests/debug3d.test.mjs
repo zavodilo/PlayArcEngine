@@ -105,3 +105,44 @@ test('capture() берёт World3D лексически, а не с window', () 
     assert.ok(!/window\s*\)?\s*\.World3D/.test(src), 'window.World3D в браузере undefined');
     assert.match(src, /typeof World3D !== 'undefined'/);
 });
+
+// --- Performance contract (phase D): machine stats + budget verdicts ----------------------
+
+test('Debug3D.stats(): машинная смета кадра — бюджетные строки и перепись материалов/текстур', () => {
+  const texA = { width: 256, height: 256 }, texB = { width: 128, height: 128 };
+  const matA = { diffuseMap: texA, name: 'a' }, matB = { normalMap: texB, name: 'b' };
+  const meshTris = { primitive: [{ type: 4, count: 600 }] };          // 200 треугольников
+  const meshStrip = { primitive: [{ type: 5, count: 12 }] };          // 10 (n-2)
+  const view = {
+    app: { graphicsDevice: { _drawCallsPerFrame: 42 } },
+    allMeshInstances: () => [
+      { material: matA, mesh: meshTris }, { material: matB, mesh: meshStrip },
+      { material: matA, mesh: meshTris }, { material: null, mesh: null }
+    ],
+    materials: () => [matA, matB]
+  };
+  const s = Debug3D.stats(view);
+  assert.equal(s.drawCalls, 42, 'PC2: счётчик последнего кадра');
+  assert.equal(s.triangles, 200 * 2 + 10, 'резидентные треугольники цензи');
+  assert.equal(s.meshes, 4);
+  assert.equal(s.materials, 2);
+  assert.equal(s.textures, 2, 'две уникальные текстуры, не три инстанса');
+  // 256*256*4*1.34 + 128*128*4*1.34 байт = ~0.42 MB
+  assert.ok(s.textureMB > 0.3 && s.textureMB < 0.6, 'оценка GPU-памяти текстур: ' + s.textureMB);
+  assert.ok('fps' in s && 'entities' in s, 'поля-отчёты присутствуют');
+});
+
+test('Debug3D.budgetBreaches(): чистый вердикт по бюджету — пропуски не валят', () => {
+  // vm-realm: результат — vm-массив, сравниваем через Array.from.
+  const vb = (st, b) => Array.from(Debug3D.budgetBreaches(st, b));
+  const budget = { maxDrawCalls: 100, maxTriangles: 5000, maxTextureMB: 20 };
+  assert.deepEqual(vb({ drawCalls: 100, triangles: 5000, textureMB: 20 }, budget), [], 'ровно по бюджету — ок');
+  assert.deepEqual(vb({ drawCalls: 300, triangles: 100, textureMB: 1 }, budget),
+    ['drawCalls 300 > 100']);
+  assert.deepEqual(vb({ drawCalls: 300, triangles: 999999, textureMB: 64 }, budget),
+    ['drawCalls 300 > 100', 'triangles 999999 > 5000', 'textureMB 64 > 20']);
+  // незамеренные/незаданные строки не создают ложных провалов
+  assert.deepEqual(vb({ drawCalls: null }, budget), []);
+  assert.deepEqual(vb({ drawCalls: 999 }, { maxTriangles: 1 }), []);
+  assert.deepEqual(vb(null, budget), []);
+});

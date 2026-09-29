@@ -10,6 +10,7 @@
 //  node tools/check.mjs --profiles the headless profile/migration matrix (tools/profile-matrix.mjs)
 //  node tools/check.mjs --render   headless render gate (puppeteer)
 //  node tools/check.mjs --visual   headless visual smoke (puppeteer)
+//  node tools/check.mjs --performance  perf budget gate: Debug3D.stats() vs tools/perf-budget.json (puppeteer)
 //  node tools/check.mjs --variants every variant in a real browser (puppeteer)
 //
 //  A flag that matches no step is an ERROR, not a silent pass: `check --profiles` used to run
@@ -50,12 +51,13 @@ const STEPS = [
   { flag: '--render', title: 'headless render gate', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--render'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--visual', title: 'headless visual smoke', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--visual'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--variants', title: 'варианты в браузере', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--variants'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--performance', title: 'перф-бюджет', run: () => spawnSync(process.execPath, ['tools/headless-gate.mjs', '--performance'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 // --all: the release gate — every step above (render/visual need puppeteer, dev-only).
 const ALL = process.argv.includes('--all');
 
 const DEFAULT_STEPS = ['--types', '--tests', '--skills'];
-const KNOWN = ['--types', '--tests', '--skills', '--profiles', '--render', '--visual', '--variants'];
+const KNOWN = ['--types', '--tests', '--skills', '--profiles', '--render', '--visual', '--variants', '--performance'];
 // Anything that looks like a flag and is not known is a typo, not a reason to run the defaults.
 const passed = process.argv.slice(2).filter(a => a.startsWith('--') && a !== '--json');
 for (const f of passed) {

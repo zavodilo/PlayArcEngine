@@ -156,7 +156,7 @@ expected.set('agent-manifest.json', JSON.stringify({
         generated: 'js/presentation/RenderProfiles.js',
         order: ['2d', '2.5d', 'isometric3d', 'lowpoly3d', 'full3d'],
         rule: 'Profile != Variant: a variant (presentation/variants/<id>.json) is one concrete presentation of ONE game model; conversions are non-destructive',
-        coordinates: { x: 'horizontal', y: 'vertical / height', z: 'depth / forward', note: '2D is the y = 0 case of the same space' },
+        coordinates: { x: 'horizontal', y: 'vertical / height', z: 'depth / forward', note: '2D is the y = 0 case of the same space', named: ['World3D.mapToRender(m) -> [px, py, pz]', 'World3D.renderToMap(px, py, pz) -> {x, y, h}'], rule: 'the mirror is derived only in Coords.js and World3D.js (tests/coords-mirror.test.mjs enforces)' },
         skills: { orchestration: 'render-profile', migration: 'visual-migration', variants: 'visual-variants', perProfile: ['2d', '2.5d', 'isometric3d', 'lowpoly3d', 'full3d'], presentation: ['asset-representation', 'camera', 'lighting', 'materials', 'animation'] },
         commands: {
             list: 'node tools/arc.mjs variant list',
@@ -183,7 +183,8 @@ expected.set('agent-manifest.json', JSON.stringify({
         renderProfile: ['RenderProfile.get()', 'RenderProfile.set(profileOrVariant)', 'RenderProfile.list()', 'RenderProfile.config()', 'RenderProfile.canConvert(a, b)', 'RenderProfile.plan(a, b)', 'RenderProfile.convert(a, b)', 'RenderProfile.suggest(intent)', 'RenderProfile.inspect()'],
         variant: ['Variant.list()', 'Variant.current()', 'Variant.activate(id)', 'Variant.createFromProfile(p)', 'Variant.clone(id, newId)', 'Variant.convert(opts)', 'Variant.compare(a, b)', 'Variant.validateAll()'],
         migration: ['Migration.plan(from, to)', 'Migration.convert(opts)', 'Migration.rollback()', 'Migration.journal()', 'Migration.summarize()'],
-        runtime: ['PlayArcRuntime.start({project, variant})', 'PlayArcRuntime.setVariant(id)', 'PlayArcRuntime.context()', 'PlayArcRuntime.inspect()']
+        runtime: ['PlayArcRuntime.start({project, variant})', 'PlayArcRuntime.setVariant(id)', 'PlayArcRuntime.context()', 'PlayArcRuntime.inspect()'],
+        debug3d: ['Debug3D.stats(view?, {frame?})', 'Debug3D.budgetBreaches(stats, budget)', 'Debug3D.lint(opts?)', 'Debug3D.bench(opts?)', 'Debug3D.benchToggle(mesh|toggles)', 'Debug3D.hold(pose)', 'Debug3D.release()', 'Debug3D.frames(n)', 'Debug3D.setMode(mode)']
     },
     checks: {
         fast: 'node tools/check.mjs',
@@ -194,6 +195,7 @@ expected.set('agent-manifest.json', JSON.stringify({
         sceneManifest: 'node tools/manifest.mjs --check',
         render: 'node tools/headless-gate.mjs --render',
         visual: 'node tools/headless-gate.mjs --visual',
+        performance: 'node tools/headless-gate.mjs --performance (budget: tools/perf-budget.json)',
         serve: { game: 'node tools/dev-server.mjs', editor: 'node _utils/editor/server.mjs' },
         cli: {
             anyOs: 'node tools/arc.mjs <run|editor|check|build|gate|sync|manifest|scaffold>',

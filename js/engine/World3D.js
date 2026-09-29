@@ -83,6 +83,18 @@ const World3D = {
     mirror(x, h, y) { return [-x, h, y]; },
     unmirror(px, py, pz) { return [-px, py, pz]; },
 
+    // Named directions of the SAME conversion (review item 10): a map record { x, y, h } ->
+    // PlayCanvas world position, and back. Thin aliases over mirror/unmirror so agents and
+    // games name the direction instead of re-deriving the formula (which is how manual
+    // mirroring creeps into gameplay code — tests/coords-mirror.test.mjs guards the scope).
+    /** @param {{ x?: number, y?: number, h?: number }} m @returns {number[]} pc world [x, y, z] */
+    mapToRender(m) { return World3D.mirror(m.x || 0, m.h || 0, m.y || 0); },
+    /** @param {number} px @param {number} py @param {number} pz @returns {{ x: number, y: number, h: number }} map record */
+    renderToMap(px, py, pz) {
+        const u = World3D.unmirror(px, py, pz);
+        return { x: u[0], y: u[2], h: u[1] };
+    },
+
     // Brings up the engine on the canvas (one per page). false — no PlayCanvas or WebGL.
     init(canvas) {
         if (typeof pc === 'undefined') {

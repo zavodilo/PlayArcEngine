@@ -5,6 +5,9 @@
 //   await Debug3D.lint()                          findings of the active view (World3D.view)
 //   Debug3D.hold({ eye: [x, y, h], target: [x, y, h] })   look from here, whatever the camera
 //   Debug3D.release()                             controller does; release() hands it back
+//   Debug3D.stats(view?)                          machine cost of the frame: drawCalls, triangles,
+//                                                 materials, textures, textureMB, fps/frameMs, entities
+//   Debug3D.budgetBreaches(stats, budget)         which budget lines a snapshot crosses (pure)
 //   Debug3D.bench()                               ms per frame, GPU-synchronised
 //   Debug3D.benchToggle(mesh)                     what one thing costs (A/B/A/B)
 //   Debug3D.setMode('backfaces' | 'normals' | 'wireframe' | 'off')
@@ -120,6 +123,105 @@ const Debug3D = {
             target = { x: eye.x + Math.cos(yaw) * cp * 100, y: eye.y + Math.sin(yaw) * cp * 100, h: eye.h + Math.sin(pitch) * 100 };
         }
         return { eye, target, clamped };
+    },
+
+    // --- Performance contract (roadmap phase D) -------------------------------------------
+
+    /**
+     * Machine-readable cost of the frame — what an agent reads after its own edit.
+     * drawCalls/triangles/textureMB are BUDGET lines (tools/perf-budget.json, checked by
+     * `check.mjs --performance` through Debug3D.budgetBreaches); fps/frameMs are REPORTED
+     * only: under software GL (headless gates) they measure the rasterizer, not the scene,
+     * so budgeting them would flake.
+     *
+     * drawCalls reads device._drawCallsPerFrame (PlayCanvas 2; its app.stats.drawCalls stays
+     * zero because the kit renders through its own frame path). That counter ACCUMULATES
+     * since device init, so the honest per-frame number needs a measured frame:
+     * `stats(view, { frame: true })` resets the counters and renders one frame — what the
+     * perf gate does (after warmup frames). Plain `stats()` is a read-only snapshot.
+     * Triangles are the RESIDENT scene triangles of the live census (the same meshes lint
+     * sees): what the scene asks the GPU for, not what one camera happened to draw.
+     * @param {View3D} [view]
+     * @param {{ frame?: boolean }} [opts]
+     */
+    stats(view, opts) {
+        const W = Debug3D.world();
+        view = view || (W && W.view) || null;
+        const ctx = (typeof Visual3D !== 'undefined' && Visual3D.ctx) ? Visual3D.ctx() : null;
+        const app = (view && view.app) || (W && W.app) || (ctx && ctx.view && ctx.view.app) || null;
+        const dev = app && app.graphicsDevice;
+        const base = (typeof Visual3D !== 'undefined' && Visual3D.stats) ? Visual3D.stats() : null;
+        /** @type {any[]} */
+        const list = (view && view.allMeshInstances && Array.isArray(view.allMeshInstances()))
+            ? view.allMeshInstances() : [];
+        const mats = new Set(), texs = new Set();
+        let triangles = 0;
+        for (const mi of list) {
+            const m = mi && mi.material;
+            if (m) {
+                mats.add(m);
+                for (const k in m) {
+                    const t = m[k];
+                    // A texture slot: a GPU texture object with a positive pixel size. No duck
+                    // beyond that — the census must survive stubs and future pc versions.
+                    if (t && typeof t === 'object' && +t.width > 0 && +t.height > 0) texs.add(t);
+                }
+            }
+            const mesh = mi && mi.mesh;
+            const prims = (mesh && mesh.primitive) || [];
+            for (let i = 0; i < prims.length; i++) {
+                const pr = prims[i];
+                if (!pr || !pr.count) continue;
+                // pc.PRIMITIVE_TRIANGLES = 4 (count indices), TRISTRIP = 5 / TRIFAN = 6 (n-2).
+                if (pr.type === 5 || pr.type === 6) triangles += Math.max(pr.count - 2, 0);
+                else if (pr.type === 4 || pr.type == null) triangles += pr.count / 3;
+            }
+        }
+        let textureMB = 0;
+        for (const t of texs) textureMB += (t.width * t.height * 4 * 1.34) / (1024 * 1024);
+        // Per-frame measurement: zero the device counters and render one frame. Only on
+        // explicit request — a plain read must not surprise the caller with a render.
+        if (opts && opts.frame && W && typeof W.renderFrame === 'function' && dev && dev._drawCallsPerFrame != null) {
+            dev._drawCallsPerFrame = 0;
+            if (dev._primsPerFrame && typeof dev._primsPerFrame.fill === 'function') dev._primsPerFrame.fill(0);
+            W.renderFrame();
+        }
+        const num = (v) => (typeof v === 'number' && isFinite(v)) ? v : null;
+        const pick = (...vals) => { for (const v of vals) { const n = num(v); if (n != null) return n; } return null; };
+        const fps = pick(base && base.fps, W && W.fps ? W.fps() : null);
+        return {
+            fps: fps,
+            frameMs: fps > 0 ? Math.round(1000 / fps * 100) / 100 : null,
+            drawCalls: pick(base && base.drawCalls,
+                dev && dev._drawCallsPerFrame != null ? dev._drawCallsPerFrame : null),
+            triangles: Math.round(triangles) || pick(base && base.triangles),
+            meshes: list.length,
+            materials: view && view.materials ? view.materials().length : mats.size,
+            textures: texs.size,
+            textureMB: Math.round(textureMB * 10) / 10,
+            entities: pick((typeof GameModel !== 'undefined' && GameModel.entities) ? GameModel.entities.length : null,
+                base ? (base.objects + base.worldObjects) : null),
+            sprites: base ? base.sprites : null
+        };
+    },
+
+    /**
+     * Pure: which budget lines a measured snapshot crosses. Budget = tools/perf-budget.json
+     * ({ maxDrawCalls, maxTextureMB, maxTriangles }); a missing line/measure never fails.
+     * @returns {string[]}
+     */
+    budgetBreaches(stats, budget) {
+        /** @type {string[]} */
+        const out = [];
+        if (!stats || !budget) return out;
+        const line = (name, key) => {
+            const max = budget[key], v = stats[name];
+            if (max != null && v != null && v > max) out.push(name + ' ' + v + ' > ' + max);
+        };
+        line('drawCalls', 'maxDrawCalls');
+        line('triangles', 'maxTriangles');
+        line('textureMB', 'maxTextureMB');
+        return out;
     },
 
     // --- Lint --------------------------------------------------------------------------------

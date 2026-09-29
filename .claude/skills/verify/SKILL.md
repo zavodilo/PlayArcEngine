@@ -71,6 +71,28 @@ Debug3D.benchToggle({ on() { /* feature on */ }, off() { /* feature off */ } });
 - A cost of a full-screen effect scales with pixels; a cost of geometry with triangles and
   draw calls (`scene.getActiveMeshes()`, `engine._drawCalls`) — say which one you measured.
 
+### Frame budget: stats and the budget gate
+
+```js
+const stats = Debug3D.stats();               // read-only snapshot
+const per = Debug3D.stats(null, { frame: true });  // zero counters, render ONE frame, read
+Debug3D.budgetBreaches(stats, budget);       // pure verdict: ['drawCalls 4627 > 700', ...]
+```
+
+- `stats()` fields: `drawCalls`, `triangles`, `textureMB` are the BUDGET lines;
+  `fps`/`frameMs` are reported only. Frame time under software GL measures the rasterizer
+  (a `--no-sandbox` SwiftShader headless run), not the scene — never budget it.
+- `drawCalls` is per rendered frame only with `{ frame: true }` (the PlayCanvas counter
+  accumulates since device init otherwise). `triangles` are the resident scene triangles of
+  the live census; `textureMB` is the texture census (`w * h * 4 * 1.34` per unique texture).
+- The budget lives in `tools/perf-budget.json` (`maxDrawCalls`, `maxTriangles`,
+  `maxTextureMB`). Calibrate it on a measured frame of YOUR project, ~1.5x headroom; the
+  repository number fits the sample scene.
+- `node tools/check.mjs --performance` (puppeteer, part of `--all`) boots the game, warms up
+  frames, measures `stats({ frame: true })` and fails on every `budgetBreaches` line — the
+  numbers land in the gate's JSON report as `performance`. It is a release gate, not a
+  micro-benchmark: one violation line names the number and the limit.
+
 ## Scene lint and debug views
 
 `await Debug3D.lint()` (editor: "Lint scene") — inside-out meshes, normal map convention,

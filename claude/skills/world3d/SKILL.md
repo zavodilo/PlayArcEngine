@@ -57,6 +57,16 @@ Projections — only through `View3D`:
 - Camera moved but no frame rendered yet — call `view.refreshMatrices()` first
   (`camEntity.syncHierarchy()`).
 
+The NAMED directions (the semantic layer, phase D — use these instead of deriving `-x` by
+hand, ever):
+- `World3D.mapToRender(m)` -> `[px, py, pz]` in PlayCanvas world — map `{x, y, h}` placed.
+- `World3D.renderToMap(px, py, pz)` -> `{x, y, h}` in map space — read back a mesh position.
+- They are thin aliases over `Coords.toEngine(Coords.fromMap(m))` / `Coords.unproject` —
+  consistent with the table above by construction. `tests/coords-mirror.test.mjs` locks both
+  the consistency and the scope gate: the mirror formula is derived ONLY in `Coords.js` and
+  `World3D.js`; anything else calling `mirror(`/`unmirror(`/`toEngine(`/`fromEngine(` fails
+  the suite. A manual `-x` in gameplay code is a bug even when the picture looks right.
+
 ## World objects
 
 Objects are `pc.Entity` trees; a built model's root entity plays the role the root mesh
