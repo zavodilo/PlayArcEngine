@@ -184,7 +184,8 @@ expected.set('agent-manifest.json', JSON.stringify({
         variant: ['Variant.list()', 'Variant.current()', 'Variant.activate(id)', 'Variant.createFromProfile(p)', 'Variant.clone(id, newId)', 'Variant.convert(opts)', 'Variant.compare(a, b)', 'Variant.validateAll()'],
         migration: ['Migration.plan(from, to)', 'Migration.convert(opts)', 'Migration.rollback()', 'Migration.journal()', 'Migration.summarize()'],
         runtime: ['PlayArcRuntime.start({project, variant})', 'PlayArcRuntime.setVariant(id)', 'PlayArcRuntime.context()', 'PlayArcRuntime.inspect()'],
-        debug3d: ['Debug3D.stats(view?, {frame?})', 'Debug3D.budgetBreaches(stats, budget)', 'Debug3D.lint(opts?)', 'Debug3D.bench(opts?)', 'Debug3D.benchToggle(mesh|toggles)', 'Debug3D.hold(pose)', 'Debug3D.release()', 'Debug3D.frames(n)', 'Debug3D.setMode(mode)']
+        debug3d: ['Debug3D.stats(view?, {frame?})', 'Debug3D.budgetBreaches(stats, budget)', 'Debug3D.lint(opts?)', 'Debug3D.bench(opts?)', 'Debug3D.benchToggle(mesh|toggles)', 'Debug3D.hold(pose)', 'Debug3D.release()', 'Debug3D.frames(n)', 'Debug3D.setMode(mode)'],
+        diagnostics: ['PlayArcDiagnostics.snapshot(app?)', 'PlayArcDiagnostics.census(app?)', 'PlayArcDiagnostics.frameDraws(app?, frames?, timeoutMs?)', 'PlayArcDiagnostics.culled(app?, frames?, timeoutMs?)', 'PlayArcDiagnostics.webgl(app?)', 'PlayArcDiagnostics.glTrust(app?, info?)']
     },
     checks: {
         fast: 'node tools/check.mjs',
