@@ -184,8 +184,49 @@ full3d → снова 2D без бэкапа) и «критический арх
 
 ## Дельта-задачи (агентские сессии; правила заявок — в шапке)
 
-- [~] E-1 Каноническая диагностика в ките: `PlayArcDiagnostics` (census/frameDraws/webgl/glTrust/snapshot) + честная culled-метрика (postcull + visibleThisFrame). — взято: 2026-09-29 12:55 UTC @zavodilo-agent2 (arena.ai).
+- [x] E-1 Каноническая диагностика в ките: `PlayArcDiagnostics` (census/frameDraws/webgl/glTrust/snapshot) + честная culled-метрика (postcull + visibleThisFrame). — взято: 2026-09-29 12:55 UTC @zavodilo-agent2 (arena.ai).
   Обоснование: единственная крупная игра на ките (Wanderburg) была вынуждена завести СОБСТВЕННЫЙ `js/presentation/Diagnostics.js` (BS-2) — диагностика по сути инженер-уровня (читает `PlayArcRuntime.context`, `scene.layers`, pass-счётчики рендерера), но в ките её нет, и каждая игра изобретает её заново. Там же замер T-14 упёрся в тупик culled-метрики: `_numDrawCallsCulled` в вендорном PlayCanvas мёртв (всегда 0, инкремента нет ни при каком флаге), а наивный пересчёт `pc.Frustum` + `_viewProjMat` + `containsAabb` даёт мусор («откуллено 2102 из 2115» при ~1300–1600 реальных draws/кадр — фрустум прохода берётся не оттуда). В вендорном `playcanvas.d.ts` есть документированный выход: `scene.on('postcull')` (EVENT_POSTCULL — «mesh instance visibility (such as MeshInstance#visibleThisFrame) is up to date when this fires») + `MeshInstance.visibleThisFrame` — СОБСТВЕННОЕ решение рендерера по каждой камере; метрика читает результат кульлинга, а не пересчитывает причину заново.
   План: (1) НОВЫЙ `js/presentation/Diagnostics.js` — порт канона из Wanderburg (API-совместимый: census/frameDraws/webgl/glTrust/snapshot — копия в игре заменяется диффом) + НОВЫЙ метод `culled(app?, frames?, timeoutMs?)`: на 'postcull' (camera!==null) пересчёт уникальных включённых инстансов по `visibleThisFrame` → {drawn, culled, total} на кадр; недоступный счётчик = null, никогда 0 (правило «тишина — баг»); в доках честно: «припаркованные» пулом вне фрустума инстансы попадают в culled (игры, желающие отделить пул, вычитают свой реестр — движок за пулы игр не решает). (2) `index.html` — один `<script>` после Runtime.js (инвариант порядка скриптов). (3) `agent-manifest.json` — секция api.diagnostics. (4) `Scene.inspect()` — поле `glTrust` рядом с `fps` (под swiftshader fps — скорость эмуляции, не темп игры; ловушка класса T-11 для агентов, читающих inspect(); поле синхронное, frame-free — контракт inspect не замедляется). (5) НОВЫЙ `tests/diagnostics.test.mjs` — чистые фейки scene/layers/событий без браузера: census-обход (уникальность между слоями, ink-сплит), frameDraws-дельты между postrender, culled-подсчёт по postcull, glTrust-классификация (denylist софта, «неизвестно ≠ софт»), null-вместо-0.
   ЗОНА ПРАВОК: новые `js/presentation/Diagnostics.js` и `tests/diagnostics.test.mjs`; `index.html` (одна строка скрипта); `agent-manifest.json` (api-карта); `js/core/SceneAPI.js` (одно поле inspect + комментарий). НЕ трогаю: `libs/` (не форкаем движок — не-цель), скиллы (regen не нужен; если check потребует — sync-skills), World3D/Debug3D/профили.
   Приёмка: `node tools/check.mjs --all` зелёный (types обоих tsconfig, tests, skills, drift-чеки, headless-гейты); живой замер на sample-игре: drawn+culled == census.instances, drawn согласуется с frameDraws.forward с учётом ink/shadow-проходов (числа СОВМЕСТНЫ — не «2102/2115»); итог с цифрами — в этой записи; ссылка для Wanderburg T-14 (кит разблокировал метрику).
+  **СДЕЛАНО 2026-09-29 15:58 UTC @zavodilo-agent2** (честная поправка времени: заявка написала
+  «12:55» — часы сессии отставали; фактический пуш заявки 4f0c291 ~15:45 UTC, аренда 24 ч
+  считается от него). Реализовано по плану, все 5 пунктов:
+  (1) `js/presentation/Diagnostics.js` (канон кита): порт Wanderburg-копии — API-совместимый
+  (census/frameDraws/webgl/glTrust/snapshot + приватные _engineApp/_counters), обобщённые
+  комментарии (три несущих правила: тишина=null никогда 0; счётчик=дельта; читать решение
+  рендерера, не пересчитывать) + НОВЫЙ `culled(app?, frames?, timeoutMs?)` — сэмплирует
+  `MeshInstance.visibleThisFrame` на документированном `scene.on('postcull')` (camera!==null;
+  null = внутренний кульлинг теней, пропускается); отказные ветви честные: 'no visibleThisFrame'
+  (сборка без флага), 'timeout', 'no layers' — чисел не изобретает; приватный `_walk` — общий
+  обход уникальных инстансов для census и culled (один источник правды). snapshot() расширен
+  секцией culled (медиана drawn/culled/total) — суперсет прежней формы.
+  (2) `index.html`: `<script>` сразу после Runtime.js. (3) `tools/asset-scan.mjs`: SCRIPT_ORDER
+  синхронно расширен (иначе файл выпал бы из zip-сборки); create-arcengine копирует дерево
+  целиком — новый файл попадает в скаффолд автоматически. (4) `agent-manifest.json`: api.diagnostics
+  (6 сигнатур), форматирование файла не тронуто (минимальная вставка). (5) `js/core/SceneAPI.js`
+  inspect(): поле `glTrust` рядом с fps (под software-адаптером fps — скорость эмуляции;
+  поле синхронное, frame-free; null когда Diagnostics не на странице).
+  ТЕСТЫ: `tests/diagnostics.test.mjs` 12/12 на чистых фейках (эмиттеры событий, слои,
+  инстансы; vm-таймеры инжектируются, ink-реестр строится Map'ом vm-реалма — кросс-реалм
+  instanceof честен): уникальность census между слоями + skip UI/disabled, ink-сплит из
+  window.app, frameDraws-дельты (670/680/650 из cumulative 1000→3000), 'no counters'=null-и,
+  timeout-ветки, culled-сэмплы (2/3+3/2 из 5, null-камера не тратит сэмпл, drawn+culled+unknown
+  ==total), отказ 'no visibleThisFrame', null-дисциплина _counters, glTrust-классификация
+  (SwiftShader/WARP=software, NVIDIA=false+note null, «неизвестно ≠ софт»), snapshot-интеграция
+  (peak draws + медианы culled + census + null-и контекста).
+  ЗАМЕР ЖИВЬЁМ (sample, arcengine-sample-lowpoly3d, swiftshader 1280×720, headless;
+  probe в сессии, pageerror 0): census **479** (base 326 + ink 153); culled **drawn 71 +
+  culled 408 + unknown 0 = 479 == census** (разложение ТОЧНОЕ, 5/5 сэмплов идентичны);
+  frameDraws forward **71/71/71/71/71** — **drawn == forward цифра-в-цифру** (в этом кадре
+  ink-инстансы откуллены, shadow-проход отдельный: shadow 164, device 235 = 71+164 ✓;
+  depth=null — счётчик не экспонируется, честно null); glTrust: software=true, note про
+  SwiftShader — ровно та аннотация, из-за которой поле добавлено в inspect().
+  ГЕЙТЫ: `node tools/check.mjs --all` — **EXIT 0, «Всё прошло.», 0 FAIL** (types игры и
+  редактора, tests, skills-sync, манифест сцены, drift профилей/вариантов, матрица профилей,
+  headless render/visual/variants).
+  Следствие для Wanderburg: T-14 разблокирован НА УРОВНЕ КИТА — метрика читает решение
+  рендерера (postcull+visibleThisFrame), а не пересчитывает фрустум; подпункт P-1 «culled в
+  гейт» снова реализуем после синхронизации движковых файлов в игру (копия Wanderburg
+  js/presentation/Diagnostics.js заменяется этим каноном диффом — API совместим; саму
+  синхронизацию НЕ делаю — это репозиторий игры и зона его агентов, заявка там не моя).

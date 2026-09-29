@@ -34,6 +34,7 @@ export const CODE_FILES = [
   'js/presentation/AssetRegistry.js', 'js/presentation/Variant.js', 'js/presentation/RenderProfile.js',
   'js/presentation/Camera.js', 'js/presentation/Lighting.js', 'js/presentation/Animation.js',
   'js/presentation/VisualEntity.js', 'js/presentation/Migration.js', 'js/presentation/Runtime.js',
+  'js/presentation/Diagnostics.js',
   'js/profiles/2d/profile.js', 'js/profiles/2.5d/profile.js', 'js/profiles/isometric3d/profile.js',
   'js/profiles/lowpoly3d/profile.js', 'js/profiles/full3d/profile.js',
   'js/UI.js', 'js/core/SceneAPI.js', 'js/Game.js', 'js/main.js',

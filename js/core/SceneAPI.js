@@ -206,6 +206,12 @@ const Scene = {
             errors: snaps.filter(sn => sn.error).map(sn => ({ name: sn.name, error: sn.error })),
             triangles: triangles,
             fps: /** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0,
+            // An fps number without the adapter is a trap: under a SOFTWARE renderer (headless
+            // CI, VMs) fps is the emulation speed, not the game's tempo, and conclusions about
+            // the frame budget drawn from it are fiction. glTrust annotates the number —
+            // synchronous and frame-free, so the inspect() contract does not get slower.
+            // Null when the kit's Diagnostics.js is not on the page (rule: silence, never 0).
+            glTrust: (typeof PlayArcDiagnostics !== 'undefined') ? PlayArcDiagnostics.glTrust() : null,
             findings: findings,
             entities: entities.map(sn => ({
                 id: sn.name, kind: sn.kind, model: sn.model,

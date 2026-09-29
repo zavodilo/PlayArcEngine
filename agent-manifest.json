@@ -317,6 +317,14 @@
             "PlayArcRuntime.setVariant(id)",
             "PlayArcRuntime.context()",
             "PlayArcRuntime.inspect()"
+        ],
+        "diagnostics": [
+            "PlayArcDiagnostics.snapshot(app?)",
+            "PlayArcDiagnostics.census(app?)",
+            "PlayArcDiagnostics.frameDraws(app?, frames?, timeoutMs?)",
+            "PlayArcDiagnostics.culled(app?, frames?, timeoutMs?)",
+            "PlayArcDiagnostics.webgl(app?)",
+            "PlayArcDiagnostics.glTrust(app?, info?)"
         ]
     },
     "checks": {
