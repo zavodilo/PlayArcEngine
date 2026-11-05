@@ -97,7 +97,7 @@ const Migration = {
         const rows = [];
         const generated = [];
         const fallbacks = [];
-        let replacements = 0, missing = 0, fallbackGeometry = 0;
+        let replacements = 0, missing = 0, fallbackGeometry = 0, procedural = 0;
 
         for (const e of entities) {
             const before = VisualEntity.desired(e, { id: srcProfile, depth: src.depth, world: src.worldRepresentation });
@@ -111,7 +111,14 @@ const Migration = {
             };
             if (after) {
                 if (!before || before.type !== after.type || before.asset !== after.asset) replacements++;
-                if (after.resolvedBy === 'placeholder' || !after.asset) {
+                // A DECLARED primitive variant (a tree, a rock: `{ type: 'primitive', kind: 'tree' }`)
+                // is the intended presentation, not a missing asset: it needs no file, no
+                // placeholder and no warning. Only 'placeholder' means "nothing dresses this role
+                // in this profile yet".
+                const isPrimitive = after.resolvedBy === 'variant' && after.type === 'primitive';
+                if (isPrimitive) {
+                    procedural++;
+                } else if (after.resolvedBy === 'placeholder' || !after.asset) {
                     missing++;
                     const ph = Migration.placeholderFor(e, after, dstProfile);
                     row.generated = ph.path || ('primitive:' + (ph.kind || 'box'));
@@ -154,6 +161,7 @@ const Migration = {
                 preserved: entities.length,
                 visualReplacements: noop ? 0 : replacements,
                 missingAssets: missing,
+                procedural: procedural,
                 fallbackGeometry: fallbackGeometry,
                 cameraChanges: noop ? 0 : cameraChanges,
                 lightingChanges: noop ? 0 : lightingChanges,

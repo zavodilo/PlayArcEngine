@@ -14,6 +14,18 @@
 // Objects.js), the editor edits the same defs, and nothing here bypasses
 // World3D.addObject / placeObject — this file only adds validation and a stable surface.
 
+// --- kit modules are LEXICAL globals, not window properties --------------------------------
+// Every file here is a classic <script>: a top-level `const World3D = {…}` becomes a binding
+// in the global lexical environment, NOT a field of `window`. `window.World3D` is therefore
+// undefined in the browser even though World3D exists (the kit already lost Debug3D to this
+// trap once). Read engine modules through these two accessors only.
+const ArcModules = {
+    /** @returns {any | null} World3D when the engine is on the page */
+    world() { return (typeof World3D !== 'undefined') ? World3D : null; },
+    /** @returns {any | null} Debug3D when the lint/debug module is on the page */
+    debug() { return (typeof Debug3D !== 'undefined') ? Debug3D : null; }
+};
+
 /** @satisfies {Record<string, any>} */
 const Scene = {
     // --- context ---------------------------------------------------------------
@@ -189,11 +201,13 @@ const Scene = {
         const entities = area
             ? snaps.filter(sn => sn.x >= area[0] && sn.y >= area[1] && sn.x <= area[2] && sn.y <= area[3])
             : snaps;
-        const view = /** @type {any} */ (window).World3D ? /** @type {any} */ (window).World3D.view : null;
+        const world3d = ArcModules.world();
+        const view = world3d ? world3d.view : null;
         let findings = [];
         let triangles = 0;
-        if (view && /** @type {any} */ (window).Debug3D) {
-            const r = await /** @type {any} */ (window).Debug3D.lint(view, { silent: true, frame: false });
+        const debug3d = ArcModules.debug();
+        if (view && debug3d) {
+            const r = await debug3d.lint(view, { silent: true, frame: false });
             findings = r.findings;
             triangles = r.stats ? r.stats.triangles : 0;
         }
@@ -205,7 +219,7 @@ const Scene = {
             loaded: snaps.filter(sn => sn.loaded).length,
             errors: snaps.filter(sn => sn.error).map(sn => ({ name: sn.name, error: sn.error })),
             triangles: triangles,
-            fps: /** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0,
+            fps: world3d ? Math.round(world3d.fps()) : 0,
             // An fps number without the adapter is a trap: under a SOFTWARE renderer (headless
             // CI, VMs) fps is the emulation speed, not the game's tempo, and conclusions about
             // the frame budget drawn from it are fiction. glTrust annotates the number —
@@ -385,7 +399,7 @@ const Kit = {
     /** Seconds since the game loop started / last frame dt / smoothed fps. */
     time: () => Kit._t,
     dt: () => Kit._dt,
-    fps: () => (/** @type {any} */ (window).World3D ? Math.round(/** @type {any} */ (window).World3D.fps()) : 0),
+    fps: () => { const w = ArcModules.world(); return w ? Math.round(w.fps()) : 0; },
 
     // called by the kit loop (main.js) — not part of the agent contract
     _run(dt) {

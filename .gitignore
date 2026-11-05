@@ -8,3 +8,9 @@
 /_utils/.backups/
 /build/
 /dist/
+
+# Dev-only tooling of the verification gates (never part of the kit): puppeteer lives in
+# node_modules only for `node tools/check.mjs --all` / tools/headless-gate.mjs, and verify/
+# holds their screenshots and JSON reports.
+/node_modules/
+/verify/

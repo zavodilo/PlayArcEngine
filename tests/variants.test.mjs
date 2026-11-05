@@ -227,3 +227,34 @@ test('a self-presented entity counts as presented (a game may draw its own entit
     assert.deepEqual(JSON.parse(JSON.stringify(kit.VisualEntity.overBudget([own], { maxDrawCalls: 0 }))), []);
     kit.VisualEntity.sync(model, kit.RenderProfile.config(), {});   // leave the registry as it was
 });
+
+// A DECLARED primitive variant is the intended presentation, not a missing asset: a role that
+// says `{ type: 'primitive', kind: 'tree' }` needs no file, so a conversion plan must not report
+// it as a missing asset, must not invent a placeholder path for it, and must not warn about it.
+test('план: объявленный primitive — это подача, а не пропавший ассет', () => {
+    const role = 'unit.primitive-visual';
+    AssetRegistry.register(role, {
+        kind: 'visual',
+        entityType: 'prop',
+        variants: {
+            lowpoly3d: { type: 'primitive', kind: 'tree' },
+            full3d: { type: 'primitive', kind: 'tree' }
+        },
+        placeholder: { kind: 'tree', color: '#3f8f4a' }
+    });
+    const entity = GameModel.add({ id: 'unit-primitive-prop', type: 'prop', position: { x: 0, y: 0, z: 0 }, visual: { role } });
+    try {
+        const plan = Migration.plan('lowpoly3d', 'full3d');
+        const row = plan.entities.find(r => r.id === entity.id);
+        assert.ok(row, 'the entity is part of the plan');
+        assert.equal(row.to.type, 'primitive');
+        assert.equal(row.resolvedBy, 'variant', 'a declared variant dressed it');
+        assert.equal(row.generated, null, 'no placeholder is invented');
+        assert.ok(plan.counts.procedural >= 1, 'counted as procedural');
+        assert.equal(plan.generated.some(p => /unit\.primitive-visual|unit-primitive-prop/.test(p)), false, 'no generated file');
+        assert.equal(plan.warnings.some(w => /unit-primitive-prop|unit\.primitive-visual/.test(w)), false, 'no warning');
+    } finally {
+        GameModel.remove(entity.id);
+        AssetRegistry.unregister(role);
+    }
+});
