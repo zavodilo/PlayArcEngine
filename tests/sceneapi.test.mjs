@@ -2,8 +2,12 @@
 // PlayCanvas/World3D/Debug3D are stubs; the location is a fake record store — the
 // contract (validation errors, snapshots, def edits) is what is tested.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test } from 'node:test';
-import { loadScripts, stub } from './browser-scripts.mjs';
+import { loadScripts, stub, ROOT } from './browser-scripts.mjs';
+
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 function makeScene() {
     const page = loadScripts(['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/core/SceneSchema.js', 'js/core/SceneAPI.js'],
@@ -212,4 +216,40 @@ test('inspect: фильтры kind/name/area и машиночитаемый о�
     const one = await Scene.inspect({ name: 'b' });
     assert.equal(one.entities.map(e => e.id).join(','), 'b');
     assert.equal(all.camera, null, 'без камеры в стабе camera = null');
+});
+
+// --- lexical globals ------------------------------------------------------------------
+// A classic <script> makes `const World3D` a binding of the global LEXICAL environment, not
+// a field of window: `window.World3D` is undefined in the browser. Reading engine modules
+// through window silently returned 0 fps and skipped Debug3D.lint() inside Scene.inspect()
+// (the same trap that once hid Debug3D). The fixture declares a real lexical binding.
+test('Kit.fps читает движок как лексический глобал, а не через window.World3D', () => {
+    const page = loadScripts([
+        'js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/core/SceneSchema.js', 'js/core/SceneAPI.js',
+        'tests/fixtures/world3d-lexical.js'
+    ], {});
+    assert.equal(page.ctx.window.World3D, undefined, 'в браузере window.World3D пуст — в этом и ловушка');
+    assert.equal(page.get('Kit').fps(), 42, 'Kit.fps() обязан видеть лексический World3D');
+});
+
+test('Scene.inspect читает lint движка через лексический Debug3D', async () => {
+    const page = loadScripts([
+        'js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/core/SceneSchema.js', 'js/core/SceneAPI.js',
+        'tests/fixtures/world3d-lexical.js'
+    ], {});
+    const loc = { objects: [], addObject() { return { def: {}, mesh: null, error: null, loaded: Promise.resolve(null) }; }, placeObject() {}, removeObject() {} };
+    page.ctx.app = { location: loc, camera: { follow() {} } };
+    page.ctx.Debug3D = { lint: async () => ({ findings: [{ kind: 'lexical' }], stats: { triangles: 7 } }) };
+    const report = await page.get('Scene').inspect();
+    assert.equal(report.fps, 42);
+    assert.equal(report.triangles, 7, 'triangle count comes from the lint');
+    assert.equal(report.findings.length, 1, 'findings are not silently skipped');
+});
+
+test('SceneAPI не читает модули кита через window.* (статический сторож)', () => {
+    const src = read('js/core/SceneAPI.js');
+    const hits = src.split('\n')
+        .map((l, i) => [i + 1, l.replace(/\/\/.*$/, '')])
+        .filter(([, l]) => /window\)\s*\.\s*(World3D|Debug3D|Model3D|Gltf3D|Procedural3D)\b/.test(l));
+    assert.deepEqual(hits, [], 'строки с window.<модуль>: ' + hits.map(h => h[0]).join(','));
 });

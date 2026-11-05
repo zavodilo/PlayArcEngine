@@ -204,13 +204,36 @@ full3d → снова 2D без бэкапа) и «критический арх
 
 ## Дельта-задачи (агентские сессии; правила заявок — в шапке)
 
-- [~] E-2 Проверка пайплайна живым браузером: слепые чтения движка через `window.*` в `SceneAPI` (`Kit.fps()` ≡ 0, `Scene.inspect()` без линта) и ложный «missing asset» для объявленного `primitive` в плане миграции. — взято: 2026-11-05 21:28 UTC @zavodilo-agent3 (arena.ai).
+- [x] E-2 Проверка пайплайна живым браузером: слепые чтения движка через `window.*` в `SceneAPI` (`Kit.fps()` ≡ 0, `Scene.inspect()` без линта) и ложный «missing asset» для объявленного `primitive` в плане миграции. — взято: 2026-11-05 21:28 UTC @zavodilo-agent3 (arena.ai).
   Обоснование: два дефекта, которые видны только на живой игре, а не в headless-модели.
   (1) `js/core/SceneAPI.js` читает движок как `window.World3D` / `window.Debug3D`. Любой файл кита — классический `<script>`, поэтому `const World3D` — привязка ГЛОБАЛЬНОГО ЛЕКСИЧЕСКОГО окружения, а НЕ поле `window`: в браузере `window.World3D` пуст. Следствия ровно те, от которых предостерегает `agapit`: `Kit.fps()` всегда 0 (HUD показывает «0 fps» во всех вариантах), а `Scene.inspect()` молча НЕ запускает `Debug3D.lint` и возвращает `triangles: 0, findings: []` — то есть агентская самопроверка «сцена чистая» была фикцией (класс бага ab8759d «Debug3D жил на window.World3D», который в ките уже чинили, но не в SceneAPI). Замер живой игры до фикса: `{kitFps: 0, triangles: 0, findings: 0}`, после — `{kitFps: 297, triangles: 163390, findings: 0}` (fps под swiftshader — скорость эмуляции, см. `PlayArcDiagnostics.glTrust`).
   (2) `js/presentation/Migration.js` считает объявленный `{ type: 'primitive', kind: 'tree' }` (asset: null по замыслу) пропавшим ассетом: план пишет в `generated` несуществующий файл, предупреждает «N role(s) have no <profile> asset yet» и завышает `missingAssets`. Это ровно тот случай, когда пайплайн врал бы агенту о собственной работе.
   План: (1) в `SceneAPI.js` — один документированный аксессор `ArcModules` (`typeof World3D !== 'undefined'`) вместо двух `window.*` чтений; (2) в `Migration.js` — `procedural` в `counts` (объявленный primitive — подача, а не пропажа), `missingAssets`/`generated`/warnings только для настоящего `placeholder`; (3) `manifest/migration-schema.json` — поле `procedural` в схеме плана; (4) тесты: фикстура `tests/fixtures/world3d-lexical.js` (объявляет `const World3D` — ровно как браузер), 3 теста в `tests/sceneapi.test.mjs` (Kit.fps читает лексический глобал; `Scene.inspect` берёт линт и треугольники; статический сторож против `window.<модуль>`) и тест в `tests/variants.test.mjs` (объявленный primitive не попадает в `missing`/`generated`/warnings, попадает в `procedural`); (5) `.gitignore` — `/node_modules/` и `/verify/` (dev-инструменты гейтов, в набор не едут).
   ЗОНА ПРАВОК: `js/core/SceneAPI.js`, `js/presentation/Migration.js`, `manifest/migration-schema.json`, `tests/sceneapi.test.mjs`, `tests/variants.test.mjs`, новый `tests/fixtures/world3d-lexical.js`, `.gitignore`. НЕ трогаю: `libs/`, `World3D.js`/`Debug3D.js`, профили, варианты и скиллы (regen не нужен).
   Приёмка: `node tools/check.mjs --all` зелёный; живой браузер — HUD показывает реальный fps, `Scene.inspect()` возвращает треугольники и findings; план миграции не упоминает примитивы как пропажу.
+  **СДЕЛАНО 2026-11-05 21:41 UTC @zavodilo-agent3 (arena.ai) — протестировано, все проверки зелёные.**
+  (1) `SceneAPI.js`: `ArcModules.world()/debug()` на `typeof` вместо `window.World3D/Debug3D`;
+  живой браузер (full3d, swiftshader): HUD «0 fps» → «391 fps», `Kit.fps()` 0 → 297,
+  `Scene.inspect()` `{triangles: 0, findings: []}` → `{triangles: 163390, findings: []}`
+  (линт теперь реально запускается; fps под софт-адаптером — скорость эмуляции, рядом
+  `glTrust` из `PlayArcDiagnostics`).
+  (2) `Migration.js`: `counts.procedural` (схема плана обновлена), `missingAssets`/`generated`/
+  warnings — только для `resolvedBy === 'placeholder'`.
+  (3) Тесты: +3 в `tests/sceneapi.test.mjs` (фикстура `tests/fixtures/world3d-lexical.js`
+  объявляет `const World3D`, как настоящий классический скрипт: `window.World3D === undefined`,
+  `Kit.fps() === 42`; `Scene.inspect` берёт `triangles`/`findings` из линта; статический
+  сторож запрещает `window.<модуль>` в SceneAPI) и +1 в `tests/variants.test.mjs`
+  (объявленный primitive: `resolvedBy: 'variant'`, `generated: null`, нет warnings,
+  `counts.procedural >= 1`). Всего тестов 184.
+  (4) `.gitignore`: `/node_modules/`, `/verify/`.
+  ПРИЁМКА (полный релизный гейт, puppeteer установлен в dev-окружении):
+  `node tools/check.mjs --all` → «Всё прошло»: types (оба tsconfig), 184 теста, skills sync
+  (36 скиллов / 113 файлов), манифест сцены (84 константы), drift профилей и вариантов,
+  notices, матрица профилей (5 профилей + 9 конверсий, ids/contract/gameplay/save — same),
+  headless render gate (game+editor console clean), visual smoke (groundish, uiChildren 8/9),
+  «варианты в браузере» 5/5 (2d sprites/flat, 2.5d billboards/stylized, isometric3d+full3d
+  models, разные проекции и свет; скриншоты — по одному на вариант), перф-бюджет
+  `drawCalls 235, triangles 163390, breaches=[]`.
 
 - [x] E-1 Каноническая диагностика в ките: `PlayArcDiagnostics` (census/frameDraws/webgl/glTrust/snapshot) + честная culled-метрика (postcull + visibleThisFrame). — взято: 2026-09-29 12:55 UTC @zavodilo-agent2 (arena.ai).
   Обоснование: единственная крупная игра на ките (Wanderburg) была вынуждена завести СОБСТВЕННЫЙ `js/presentation/Diagnostics.js` (BS-2) — диагностика по сути инженер-уровня (читает `PlayArcRuntime.context`, `scene.layers`, pass-счётчики рендерера), но в ките её нет, и каждая игра изобретает её заново. Там же замер T-14 упёрся в тупик culled-метрики: `_numDrawCallsCulled` в вендорном PlayCanvas мёртв (всегда 0, инкремента нет ни при каком флаге), а наивный пересчёт `pc.Frustum` + `_viewProjMat` + `containsAabb` даёт мусор («откуллено 2102 из 2115» при ~1300–1600 реальных draws/кадр — фрустум прохода берётся не оттуда). В вендорном `playcanvas.d.ts` есть документированный выход: `scene.on('postcull')` (EVENT_POSTCULL — «mesh instance visibility (such as MeshInstance#visibleThisFrame) is up to date when this fires») + `MeshInstance.visibleThisFrame` — СОБСТВЕННОЕ решение рендерера по каждой камере; метрика читает результат кульлинга, а не пересчитывает причину заново.

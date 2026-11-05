@@ -28,6 +28,7 @@
                         "visualReplacements": { "type": "integer" },
                         "missingAssets": { "type": "integer" },
                         "fallbackGeometry": { "type": "integer" },
+                        "procedural": { "type": "integer", "description": "entities presented by a DECLARED primitive variant (a procedural tree, rock or capsule): intentional, needs no asset file and is not a missing asset" },
                         "cameraChanges": { "type": "integer" },
                         "lightingChanges": { "type": "integer" },
                         "worldChanges": { "type": "integer" },
